@@ -970,7 +970,7 @@ def alle_quellen_suchen(suchbegriff, max_shops=999):
     return geizhals_suchen(suchbegriff, max_shops)
 
 
-APP_VERSION = "1.6.2"
+APP_VERSION = "1.7.0"
 GITHUB_API  = "https://api.github.com/repos/erdem-basar/preis-alarm-tracker/releases/latest"
 
 def check_for_update():
@@ -1078,20 +1078,27 @@ def email_zusammenfassung(cfg, alle_aenderungen, alarme):
         if not hat_aenderungen and not hat_alarme:
             return
 
-        # Betreff
-        alarm_anzahl   = len(alarme)
-        aender_anzahl  = sum(len(g["shops"]) for g in alle_aenderungen)
-        if hat_alarme:
-            betreff = f"🔔 {alarm_anzahl} Target Price Alert{'s' if alarm_anzahl>1 else ''} + {aender_anzahl} Price Change{'s' if aender_anzahl!=1 else ''}"
-        else:
-            betreff = f"📊 {aender_anzahl} Price Change{'s' if aender_anzahl!=1 else ''} in last check"
+        # Use current language for email
+        alarm_anzahl  = len(alarme)
+        aender_anzahl = sum(len(g["shops"]) for g in alle_aenderungen)
 
-        # Alarm-Sektion
+        s_a  = "" if alarm_anzahl  == 1 else "s"
+        s_m  = "" if aender_anzahl == 1 else "s"
+
+        if hat_alarme:
+            betreff = (T("email_subject_alarm")
+                       .replace("{n}", str(alarm_anzahl)).replace("{s}", s_a)
+                       .replace("{m}", str(aender_anzahl)).replace("{ms}", s_m))
+        else:
+            betreff = (T("email_subject_changes")
+                       .replace("{n}", str(aender_anzahl)).replace("{s}", s_m))
+
+        # Alarm section
         alarm_html = ""
         if hat_alarme:
             alarm_zeilen = ""
             for a in alarme:
-                g_cur = a.get('currency','€')
+                g_cur = a.get("currency","€")
                 alarm_zeilen += f"""
                 <tr>
                   <td style="padding:10px;color:#f1f5f9;font-weight:bold">{a['name']}</td>
@@ -1100,30 +1107,30 @@ def email_zusammenfassung(cfg, alle_aenderungen, alarme):
                 </tr>"""
             alarm_html = f"""
             <div style="background:#14532d;border-radius:8px;padding:16px;margin-bottom:20px">
-              <h2 style="color:#4ade80;margin:0 0 12px">🔔 Target Price Reached!</h2>
+              <h2 style="color:#4ade80;margin:0 0 12px">{T("email_target_reached")}</h2>
               <table style="width:100%;border-collapse:collapse">
                 <tr style="background:#166534">
-                  <th style="padding:8px;text-align:left;color:#86efac">Product</th>
-                  <th style="padding:8px;text-align:left;color:#86efac">Best Price</th>
-                  <th style="padding:8px;text-align:left;color:#86efac">Shop</th>
+                  <th style="padding:8px;text-align:left;color:#86efac">{T("email_product")}</th>
+                  <th style="padding:8px;text-align:left;color:#86efac">{T("email_best_price")}</th>
+                  <th style="padding:8px;text-align:left;color:#86efac">{T("email_shop")}</th>
                 </tr>
                 {alarm_zeilen}
               </table>
             </div>"""
 
-        # Preisänderungs-Sektionen pro Gruppe
+        # Price changes per group
         aender_html = ""
         for gruppe in alle_aenderungen:
             if not gruppe["shops"]: continue
-            ziel = gruppe["zielpreis"]
+            ziel  = gruppe["zielpreis"]
             zeilen = ""
             for s in gruppe["shops"]:
-                diff    = s["preis_neu"] - s["preis_alt"]
-                pfeil   = "⬇" if diff < 0 else "⬆"
-                f_diff  = "#22c55e" if diff < 0 else "#f87171"
+                diff   = s["preis_neu"] - s["preis_alt"]
+                pfeil  = "⬇" if diff < 0 else "⬆"
+                f_diff = "#22c55e" if diff < 0 else "#f87171"
                 ziel_badge = ""
                 if s.get("ziel_erreicht"):
-                    ziel_badge = '<span style="background:#14532d;color:#4ade80;padding:2px 8px;border-radius:4px;font-size:11px;margin-left:6px">🎯 Target reached!</span>'
+                    ziel_badge = f'<span style="background:#14532d;color:#4ade80;padding:2px 8px;border-radius:4px;font-size:11px;margin-left:6px">{T("email_target_badge")}</span>'
                 zeilen += f"""
                 <tr style="{'background:#1a2e1a' if s.get('ziel_erreicht') else ''}">
                   <td style="padding:10px;color:#f1f5f9;border-bottom:1px solid #2d2d2d">
@@ -1134,7 +1141,7 @@ def email_zusammenfassung(cfg, alle_aenderungen, alarme):
                     {s['preis_neu']:.2f} € &nbsp;{pfeil} {abs(diff):.2f} €
                   </td>
                   <td style="padding:10px;border-bottom:1px solid #2d2d2d">
-                    <a href="{s['url']}" style="color:#60a5fa;text-decoration:none">Shop →</a>
+                    <a href="{s['url']}" style="color:#60a5fa;text-decoration:none">{T("email_shop_link")}</a>
                   </td>
                 </tr>"""
 
@@ -1142,15 +1149,15 @@ def email_zusammenfassung(cfg, alle_aenderungen, alarme):
             <div style="margin-bottom:20px">
               <h3 style="color:#f1f5f9;margin:0 0 8px">{gruppe['gruppe_name']}
                 <span style="color:#6b7280;font-size:12px;font-weight:normal;margin-left:8px">
-                  Zielpreis: {ziel:.2f} €
+                  {T("email_target_lbl")}: {ziel:.2f} €
                 </span>
               </h3>
               <table style="width:100%;border-collapse:collapse;background:#1a1a1a;border-radius:8px">
                 <tr style="background:#242424">
-                  <th style="padding:8px;text-align:left;color:#94a3b8">Shop</th>
-                  <th style="padding:8px;text-align:left;color:#94a3b8">Old Price</th>
-                  <th style="padding:8px;text-align:left;color:#94a3b8">New Price</th>
-                  <th style="padding:8px;text-align:left;color:#94a3b8">Link</th>
+                  <th style="padding:8px;text-align:left;color:#94a3b8">{T("email_shop")}</th>
+                  <th style="padding:8px;text-align:left;color:#94a3b8">{T("email_old_price")}</th>
+                  <th style="padding:8px;text-align:left;color:#94a3b8">{T("email_new_price")}</th>
+                  <th style="padding:8px;text-align:left;color:#94a3b8">{T("email_link")}</th>
                 </tr>
                 {zeilen}
               </table>
@@ -1161,13 +1168,13 @@ def email_zusammenfassung(cfg, alle_aenderungen, alarme):
           <div style="border-bottom:1px solid #2d2d2d;padding-bottom:12px;margin-bottom:20px">
             <h1 style="color:#f1f5f9;margin:0;font-size:20px">🔔 Price Alert Tracker</h1>
             <p style="color:#6b7280;margin:4px 0 0;font-size:12px">
-              Check vom {_dt.now().strftime('%d.%m.%Y um %H:%M Uhr')}
+              {_dt.now().strftime('%d.%m.%Y %H:%M')}
             </p>
           </div>
           {alarm_html}
-          {('<h2 style="color:#f1f5f9;margin:0 0 16px">📊 Price Changes</h2>' + aender_html) if hat_aenderungen else ''}
+          {(f'<h2 style="color:#f1f5f9;margin:0 0 16px">{T("email_price_changes")}</h2>' + aender_html) if hat_aenderungen else ''}
           <p style="color:#4b5563;font-size:11px;margin-top:24px;border-top:1px solid #1f2937;padding-top:12px">
-            Preis-Alarm Tracker · Automatischer Check
+            Price Alert Tracker · {T("email_auto_check")}
           </p>
         </body></html>"""
 
@@ -1288,27 +1295,43 @@ def app_icon_erstellen():
 
 # ── GUI ───────────────────────────────────────────────────────────────────────
 class PreisAlarmApp(tk.Tk):
+    def _center_dialog(self, dlg, w, h):
+        """Position dialog centered on the main window (works with multiple monitors)."""
+        self.update_idletasks()
+        dlg.update_idletasks()
+        # Get main window position
+        x = self.winfo_x() + (self.winfo_width()  - w) // 2
+        y = self.winfo_y() + (self.winfo_height() - h) // 2
+        dlg.geometry(f"{w}x{h}+{x}+{y}")
+
     def __init__(self):
         super().__init__()
+        # Load config FIRST so geometry can be restored
+        self.vergleiche  = lade_vergleiche()
+        self.config_data = lade_config()
         self.title(T("app_title"))
         # Restore last window position/size
-        cfg = self.config_data if hasattr(self, "config_data") else lade_config()
-        geo = cfg.get("window_geometry", "960x680")
+        geo = self.config_data.get("window_geometry", "960x680")
         try:
             self.geometry(geo)
         except:
             self.geometry("960x680")
         self.minsize(800, 560)
         self.configure(bg=BG)
-        # Save position on move/resize
+        # Save position on close (most reliable)
+        self._geo_save_job = None
         def _save_geo(e=None):
+            if self._geo_save_job:
+                self.after_cancel(self._geo_save_job)
+            self._geo_save_job = self.after(1000, _do_save)
+        def _do_save():
             try:
-                self.config_data["window_geometry"] = self.geometry()
-                speichere_config(self.config_data)
+                g = self.geometry()
+                if g and "+" in g:
+                    self.config_data["window_geometry"] = g
+                    speichere_config(self.config_data)
             except: pass
-        self.bind("<Configure>", lambda e: self.after(500, _save_geo))
-        self.vergleiche  = lade_vergleiche()
-        self.config_data = lade_config()
+        self.bind("<Configure>", _save_geo)
         self._vg_shop_vars      = {}
         self.vg_aktuelle_gruppe = None
         self._setup_style()
@@ -1396,7 +1419,7 @@ class PreisAlarmApp(tk.Tk):
         title_f.pack(side="left")
         tk.Label(title_f, text=T("app_title"), bg=BG2, fg=TEXT,
                  font=(UI_FONT, 16, "bold")).pack(anchor="w")
-        tk.Label(title_f, text=T("subtitle") if "subtitle" in TRANSLATIONS.get(_current_lang(),{}) else T("subtitle") if "subtitle" in TRANSLATIONS.get(_current_lang(),{}) else T("subtitle"), bg=BG2, fg=GRAU,
+        tk.Label(title_f, text=T("subtitle"), bg=BG2, fg=GRAU,
                  font=(UI_FONT, 8)).pack(anchor="w")
 
         # Version badge
@@ -1475,6 +1498,7 @@ class PreisAlarmApp(tk.Tk):
         inner_bar = tk.Frame(bar, bg=BG2)
         inner_bar.pack(fill="x", padx=16, pady=10)
         self._btn(inner_bar, T("new_group"), self._vg_neu, AKZENT, "#000").pack(side="left", padx=(0,6))
+        self._btn(inner_bar, "📁 " + T("new_category"), self._kategorie_neu, BG3, TEXT2).pack(side="left", padx=(0,6))
         self.btn_pruefen = self._btn(inner_bar, T("check_all"), self._vg_alle_pruefen, BG3, TEXT)
         self.btn_pruefen.pack(side="left", padx=(0,6))
         self.status_check_lbl = tk.Label(inner_bar, text="", bg=BG2, fg=TEXT2, font=(UI_FONT, 9))
@@ -1491,52 +1515,81 @@ class PreisAlarmApp(tk.Tk):
         lbl_f.pack(fill="x", padx=12, pady=(12,6))
         tk.Label(lbl_f, text=T("product_groups"), bg=BG2, fg=GRAU,
                  font=(UI_FONT, 8, "bold")).pack(side="left")
+        # Listbox with scrollbar
+        lb_frame = tk.Frame(left, bg=BG2)
+        lb_frame.pack(fill="both", expand=True)
+        lb_sb = ttk.Scrollbar(lb_frame, orient="vertical")
+        lb_sb.pack(side="right", fill="y")
         self.vg_listbox = tk.Listbox(
-            left, bg=BG2, fg=TEXT, selectbackground="#1e2040",
+            lb_frame, bg=BG2, fg=TEXT, selectbackground=BG3,
             selectforeground=AKZENT,
             font=(UI_FONT, 10), relief="flat", borderwidth=0, activestyle="none",
-            highlightthickness=0)
-        self.vg_listbox.pack(fill="both", expand=True)
+            highlightthickness=0, yscrollcommand=lb_sb.set)
+        self.vg_listbox.pack(side="left", fill="both", expand=True)
+        lb_sb.config(command=self.vg_listbox.yview)
         self.vg_listbox.bind("<<ListboxSelect>>", lambda e: self._vg_gruppe_waehlen())
         self.vg_listbox.bind("<Delete>",    lambda e: self._vg_loeschen())
         self.vg_listbox.bind("<BackSpace>", lambda e: self._vg_loeschen())
 
-        # Drag & Drop to reorder groups
+        # Drag & Drop — reorder groups AND assign to categories
         self._drag_start_idx = None
-        self._drag_indicator = None
 
         def _drag_start(e):
-            self._drag_start_idx = self.vg_listbox.nearest(e.y)
+            idx = self.vg_listbox.nearest(e.y)
+            idx_map = getattr(self, "_vg_listbox_idx", [])
+            # Only allow dragging actual groups, not category headers
+            if idx_map and (idx >= len(idx_map) or idx_map[idx] is None):
+                return
+            self._drag_start_idx = idx
             self.vg_listbox.config(cursor="fleur")
 
         def _drag_motion(e):
+            if self._drag_start_idx is None: return
             idx = self.vg_listbox.nearest(e.y)
-            if self._drag_start_idx is None or idx == self._drag_start_idx:
-                return
-            # Visual feedback - highlight drop target
             self.vg_listbox.selection_clear(0, "end")
             self.vg_listbox.selection_set(idx)
+            # Change cursor to indicate category drop vs reorder
+            idx_map = getattr(self, "_vg_listbox_idx", [])
+            if idx_map and idx < len(idx_map) and idx_map[idx] is None:
+                self.vg_listbox.config(cursor="target")  # dropping on category
+            else:
+                self.vg_listbox.config(cursor="fleur")
 
         def _drag_end(e):
             self.vg_listbox.config(cursor="")
-            if self._drag_start_idx is None:
-                return
-            target_idx = self.vg_listbox.nearest(e.y)
-            src = self._drag_start_idx
+            if self._drag_start_idx is None: return
+            src_lb = self._drag_start_idx
+            tgt_lb = self.vg_listbox.nearest(e.y)
             self._drag_start_idx = None
-            if src == target_idx or src < 0 or target_idx < 0:
+            if src_lb < 0 or tgt_lb < 0: return
+
+            idx_map = getattr(self, "_vg_listbox_idx", [])
+
+            # Get source group
+            src_real = idx_map[src_lb] if idx_map and src_lb < len(idx_map) else src_lb
+            if src_real is None: return
+            g = self.vergleiche[src_real]
+
+            # Check if dropping onto a category header
+            if idx_map and tgt_lb < len(idx_map) and idx_map[tgt_lb] is None:
+                # Assign group to this category
+                cat_label = self.vg_listbox.get(tgt_lb)
+                cat_name = cat_label.strip().strip("─").strip()
+                # Remove "── " prefix
+                cat_name = cat_name.replace("── ","").replace(" ──","").strip()
+                g["kategorie"] = cat_name
+                speichere_vergleiche(self.vergleiche)
+                self._vg_listbox_laden()
                 return
-            if src >= len(self.vergleiche) or target_idx >= len(self.vergleiche):
-                return
-            # Reorder in data
-            g = self.vergleiche.pop(src)
-            self.vergleiche.insert(target_idx, g)
+
+            # Otherwise reorder
+            tgt_real = idx_map[tgt_lb] if idx_map and tgt_lb < len(idx_map) else tgt_lb
+            if tgt_real is None or src_real == tgt_real: return
+            self.vergleiche.pop(src_real)
+            self.vergleiche.insert(tgt_real, g)
             speichere_vergleiche(self.vergleiche)
-            # Reload listbox and reselect
-            self.vg_aktuelle_gruppe = self.vergleiche[target_idx]
+            self.vg_aktuelle_gruppe = g["id"]
             self._vg_listbox_laden()
-            self.vg_listbox.selection_set(target_idx)
-            self.vg_listbox.see(target_idx)
 
         self.vg_listbox.bind("<ButtonPress-1>",  _drag_start)
         self.vg_listbox.bind("<B1-Motion>",      _drag_motion)
@@ -1555,10 +1608,17 @@ class PreisAlarmApp(tk.Tk):
         self.vg_ziel_lbl = tk.Label(title_col, text="", bg=BG, fg=AKZENT,
                                     font=(UI_FONT, 9))
         self.vg_ziel_lbl.pack(anchor="w")
+        self.vg_buynow_lbl = tk.Label(title_col, text="", bg=BG, fg=GELB,
+                                      font=(UI_FONT, 9))
+        self.vg_buynow_lbl.pack(anchor="w")
+        self.vg_notiz_lbl = tk.Label(title_col, text="", bg=BG, fg=GRAU,
+                                     font=(UI_FONT, 8), cursor="hand2")
+        self.vg_notiz_lbl.pack(anchor="w")
+        self.vg_notiz_lbl.bind("<Button-1>", lambda e: self._notiz_bearbeiten())
         btn_col = tk.Frame(hdr2, bg=BG)
         btn_col.pack(side="right")
         self._btn(btn_col, "🤖 AI",       self._vg_ai_analyse,   BG3, PURPLE).pack(side="left", padx=(0,4))
-        self._btn(btn_col, "📊 Stats",    self._vg_statistiken,  BG3, TEXT2).pack(side="left", padx=(0,4))
+        self._btn(btn_col, "📊 " + T("stats_btn"), self._vg_statistiken, BG3, TEXT2).pack(side="left", padx=(0,4))
         self._btn(btn_col, T("price_history"),  self._vg_chart_zeigen, BG3, TEXT2).pack(side="left", padx=(0,4))
         self._btn(btn_col, T("add_url"),       self._vg_shop_manuell, BG3, GRAU).pack(side="left")
 
@@ -1583,7 +1643,8 @@ class PreisAlarmApp(tk.Tk):
         sb.pack(side="right", fill="y")
         self.vg_tree.bind("<Delete>",    lambda e: self._vg_shop_loeschen())
         self.vg_tree.bind("<BackSpace>", lambda e: self._vg_shop_loeschen())
-        self.vg_tree.bind("<Double-1>",  lambda e: self._vg_shop_oeffnen())
+        self.vg_tree.bind("<Double-1>",  lambda e: self._vg_doppelklick(e))
+        self.vg_tree.bind("<Button-3>",  lambda e: self._vg_kontextmenu(e))
         self.vg_tree.tag_configure("best",      foreground=AKZENT, font=(UI_FONT, 10, "bold"), background="#0d1f1a")
         self.vg_tree.tag_configure("alarm",     foreground=AKZENT)
         self.vg_tree.tag_configure("normal",    foreground=TEXT)
@@ -1653,6 +1714,21 @@ class PreisAlarmApp(tk.Tk):
         ttk.Entry(r, textvariable=self.v_int, width=6).pack(side="left", ipady=4)
         tk.Label(r, text=T("interval_hint"), bg=BG, fg=GRAU,
                  font=(UI_FONT, 9)).pack(side="left", padx=8)
+
+        # Time window
+        time_row = tk.Frame(wrap, bg=BG)
+        time_row.pack(fill="x", pady=5)
+        tk.Label(time_row, text=T("check_window"), bg=BG, fg=TEXT2, width=18, anchor="w",
+                 font=(UI_FONT, 10)).pack(side="left")
+        self.v_time_active = tk.BooleanVar(value=cfg.get("check_window_active", False))
+        ttk.Checkbutton(time_row, variable=self.v_time_active).pack(side="left", padx=(0,8))
+        tk.Label(time_row, text=T("from_lbl"), bg=BG, fg=TEXT2, font=(UI_FONT, 9)).pack(side="left")
+        self.v_time_from = tk.StringVar(value=cfg.get("check_time_from", "22:00"))
+        ttk.Entry(time_row, textvariable=self.v_time_from, width=6).pack(side="left", ipady=3, padx=(4,8))
+        tk.Label(time_row, text=T("to_lbl"), bg=BG, fg=TEXT2, font=(UI_FONT, 9)).pack(side="left")
+        self.v_time_to = tk.StringVar(value=cfg.get("check_time_to", "08:00"))
+        ttk.Entry(time_row, textvariable=self.v_time_to, width=6).pack(side="left", ipady=3, padx=(4,0))
+        tk.Label(time_row, text=T("time_hint"), bg=BG, fg=GRAU, font=(UI_FONT, 8)).pack(side="left", padx=8)
 
         tk.Frame(wrap, bg=BORDER, height=1).pack(fill="x", pady=16)
         btn_row = tk.Frame(wrap, bg=BG)
@@ -1771,8 +1847,33 @@ class PreisAlarmApp(tk.Tk):
     # ── Vergleich: Gruppen-Logik ──────────────────────────────────────────────
     def _vg_listbox_laden(self):
         self.vg_listbox.delete(0, "end")
-        for g in self.vergleiche:
-            self.vg_listbox.insert("end", f"  {g['name']}")
+        self._vg_listbox_idx = []  # maps listbox index -> group index
+        # Group by category
+        cats = {}
+        for idx, g in enumerate(self.vergleiche):
+            cat = g.get("kategorie","").strip() or T("no_category")
+            cats.setdefault(cat, []).append((idx, g))
+
+        for cat, gruppe_list in sorted(cats.items()):
+            # Show category header if any group has a category set
+            has_cats = any(g.get("kategorie","").strip() for g in self.vergleiche)
+            if has_cats:
+                self.vg_listbox.insert("end", f"── {cat} ──")
+                self.vg_listbox.itemconfig("end", fg=GRAU, selectbackground=BG2, selectforeground=GRAU)
+                self._vg_listbox_idx.append(None)  # header row
+
+            for idx, g in gruppe_list:
+                shops_mit_preis = [s for s in g.get("shops",[]) if s.get("preis")]
+                if shops_mit_preis:
+                    bester = min(s["preis"] for s in shops_mit_preis)
+                    cur = g.get("currency","€")
+                    ziel = g.get("zielpreis",0)
+                    icon = "🏆" if bester <= ziel else ""
+                    label = f"  {g['name'][:20]}  {icon} {cur}{bester:.0f}"
+                else:
+                    label = f"  {g['name']}"
+                self.vg_listbox.insert("end", label)
+                self._vg_listbox_idx.append(idx)
         if self.vergleiche:
             idx = next((i for i,g in enumerate(self.vergleiche)
                         if g["id"] == self.vg_aktuelle_gruppe), 0)
@@ -1781,12 +1882,117 @@ class PreisAlarmApp(tk.Tk):
 
     def _vg_gruppe_waehlen(self):
         sel = self.vg_listbox.curselection()
-        if not sel or sel[0] >= len(self.vergleiche): return
-        g = self.vergleiche[sel[0]]
+        if not sel: return
+        idx_map = getattr(self, "_vg_listbox_idx", None)
+        if idx_map:
+            real_idx = idx_map[sel[0]] if sel[0] < len(idx_map) else None
+            if real_idx is None: return  # header row clicked
+            g = self.vergleiche[real_idx]
+        elif sel[0] >= len(self.vergleiche):
+            return
+        else:
+            g = self.vergleiche[sel[0]]
         self.vg_aktuelle_gruppe = g["id"]
         self.vg_titel_lbl.config(text=g["name"])
-        self.vg_ziel_lbl.config(text=f"{T('target_price_lbl')}: {g.get('currency','€')}{g['zielpreis']:.2f}")
+        self.vg_ziel_lbl.config(text=f"🔔 {T('alarm_price')}: {g.get('currency','€')}{g['zielpreis']:.2f}")
+        buy_now = g.get("buy_now_price")
+        if buy_now:
+            self.vg_buynow_lbl.config(text=f"⚡ {T('buy_now_price')}: {g.get('currency','€')}{buy_now:.2f}")
+        else:
+            self.vg_buynow_lbl.config(text="")
+        notiz = g.get("notiz","")
+        self.vg_notiz_lbl.config(text=f"📝 {notiz}" if notiz else f"📝 {T('add_note')}")
         self._vg_tabelle_laden(g)
+
+    def _vg_doppelklick(self, event):
+        """Double-click on diff column = edit target price, else open URL."""
+        col = self.vg_tree.identify_column(event.x)
+        col_idx = int(col.replace("#","")) - 1
+        cols = ("shop","url","preis","diff","status","zuletzt")
+        if col_idx < len(cols) and cols[col_idx] == "diff":
+            self._zielpreis_bearbeiten()
+        else:
+            self._vg_shop_oeffnen()
+
+    def _notiz_bearbeiten(self):
+        """Edit note for current group."""
+        g = self._aktuelle_vg()
+        if not g: return
+        dlg = tk.Toplevel(self)
+        dlg.title(T("note"))
+        self._center_dialog(dlg, 400, 180)
+        dlg.configure(bg=BG)
+        dlg.resizable(False, False)
+        dlg.grab_set()
+        tk.Label(dlg, text=f"📝 {T('note')}:", bg=BG, fg=TEXT,
+                 font=(UI_FONT, 10)).pack(anchor="w", padx=20, pady=(16,4))
+        var = tk.StringVar(value=g.get("notiz",""))
+        entry = ttk.Entry(dlg, textvariable=var, font=(UI_FONT, 11))
+        entry.pack(fill="x", padx=20, ipady=6)
+        entry.select_range(0, "end")
+        entry.focus_set()
+        def _save():
+            g["notiz"] = var.get().strip()
+            speichere_vergleiche(self.vergleiche)
+            notiz = g.get("notiz","")
+            self.vg_notiz_lbl.config(text=f"📝 {notiz}" if notiz else f"📝 {T('add_note')}")
+            dlg.destroy()
+        btn_row = tk.Frame(dlg, bg=BG)
+        btn_row.pack(pady=10)
+        self._btn(btn_row, T("save"), _save, AKZENT, "#000").pack(side="left", padx=6, ipadx=10)
+        self._btn(btn_row, T("close"), dlg.destroy, BG3, TEXT).pack(side="left", padx=6, ipadx=10)
+        entry.bind("<Return>", lambda e: _save())
+        entry.bind("<Escape>", lambda e: dlg.destroy())
+
+    def _zielpreis_bearbeiten(self):
+        """Edit target price inline via popup."""
+        g = self._aktuelle_vg()
+        if not g: return
+        dlg = tk.Toplevel(self)
+        dlg.title(T("target_lbl"))
+        self._center_dialog(dlg, 320, 140)
+        dlg.configure(bg=BG)
+        dlg.resizable(False, False)
+        dlg.grab_set()
+        tk.Label(dlg, text=f"{T('target_lbl')}:", bg=BG, fg=TEXT,
+                 font=(UI_FONT, 10)).pack(anchor="w", padx=20, pady=(16,4))
+        var = tk.StringVar(value=str(g["zielpreis"]))
+        entry = ttk.Entry(dlg, textvariable=var, font=(UI_FONT, 12), justify="center")
+        entry.pack(fill="x", padx=20, ipady=6)
+        entry.select_range(0, "end")
+        entry.focus_set()
+        def _save():
+            try:
+                g["zielpreis"] = float(var.get().replace(",","."))
+                speichere_vergleiche(self.vergleiche)
+                self._vg_tabelle_laden(g)
+                self.vg_ziel_lbl.config(
+                    text=f"{T('target_price_lbl')}: {g.get('currency','€')}{g['zielpreis']:.2f}")
+                dlg.destroy()
+            except ValueError:
+                messagebox.showerror(T("error"), T("enter_valid_price"), parent=dlg)
+        btn_row = tk.Frame(dlg, bg=BG)
+        btn_row.pack(pady=10)
+        self._btn(btn_row, T("save"), _save, AKZENT, "#000").pack(side="left", padx=6, ipadx=10)
+        self._btn(btn_row, T("close"), dlg.destroy, BG3, TEXT).pack(side="left", padx=6, ipadx=10)
+        entry.bind("<Return>", lambda e: _save())
+        entry.bind("<Escape>", lambda e: dlg.destroy())
+
+    def _vg_kontextmenu(self, event):
+        """Right-click context menu on shop row."""
+        row = self.vg_tree.identify_row(event.y)
+        if not row: return
+        self.vg_tree.selection_set(row)
+        menu = tk.Menu(self, tearoff=0, bg=BG3, fg=TEXT, activebackground=AKZENT,
+                       activeforeground="#000", relief="flat", font=(UI_FONT, 10))
+        menu.add_command(label="🌐  " + T("open_shop"),  command=self._vg_shop_oeffnen)
+        menu.add_separator()
+        menu.add_command(label="🗑  " + T("delete_shop"), command=self._vg_shop_loeschen,
+                         foreground=ROT)
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
 
     def _vg_sort_klick(self, col):
         """Click on column header: toggle ascending/descending sort."""
@@ -1880,13 +2086,77 @@ class PreisAlarmApp(tk.Tk):
                                 tags=(tag,))
 
     # ── Neue Gruppe Dialog ────────────────────────────────────────────────────
-    def _vg_neu(self):
+    def _kategorie_neu(self):
+        """Create a new category and optionally assign selected group to it."""
         dlg = tk.Toplevel(self)
-        dlg.title("New Product Group")
-        dlg.geometry("560x440")
+        dlg.title(T("new_category"))
+        self._center_dialog(dlg, 380, 200)
         dlg.configure(bg=BG)
         dlg.resizable(False, False)
         dlg.grab_set()
+
+        tk.Label(dlg, text="📁 " + T("new_category"), bg=BG, fg=TEXT,
+                 font=(UI_FONT, 12, "bold")).pack(anchor="w", padx=24, pady=(20,4))
+        tk.Label(dlg, text=T("category_name"), bg=BG, fg=TEXT2,
+                 font=(UI_FONT, 9)).pack(anchor="w", padx=24)
+
+        v_name = tk.StringVar()
+        existing = sorted(set(g.get("kategorie","") for g in self.vergleiche if g.get("kategorie","")))
+        entry = ttk.Combobox(dlg, textvariable=v_name, values=existing, font=(UI_FONT, 11))
+        entry.pack(fill="x", padx=24, ipady=6, pady=(4,0))
+        entry.focus_set()
+
+        # Option to assign current group
+        g = self._aktuelle_vg()
+        v_assign = tk.BooleanVar(value=bool(g))
+        if g:
+            assign_row = tk.Frame(dlg, bg=BG)
+            assign_row.pack(fill="x", padx=24, pady=(8,0))
+            ttk.Checkbutton(assign_row, variable=v_assign).pack(side="left")
+            tk.Label(assign_row, text=T("assign_current_group").replace("{name}", g["name"][:30]),
+                     bg=BG, fg=GRAU, font=(UI_FONT, 9)).pack(side="left", padx=4)
+
+        def _save():
+            name = v_name.get().strip()
+            if not name:
+                messagebox.showerror(T("error"), T("enter_category_name"), parent=dlg)
+                return
+            if g and v_assign.get():
+                g["kategorie"] = name
+                speichere_vergleiche(self.vergleiche)
+                self._vg_listbox_laden()
+            dlg.destroy()
+
+        btn_row = tk.Frame(dlg, bg=BG)
+        btn_row.pack(pady=12)
+        self._btn(btn_row, T("save"), _save, AKZENT, "#000").pack(side="left", padx=6, ipadx=16)
+        self._btn(btn_row, T("close"), dlg.destroy, BG3, TEXT).pack(side="left", padx=6, ipadx=16)
+        entry.bind("<Return>", lambda e: _save())
+        entry.bind("<Escape>", lambda e: dlg.destroy())
+
+    def _vg_neu(self):
+        dlg = tk.Toplevel(self)
+        dlg.title(T("new_group_title"))
+        self._center_dialog(dlg, 660, 600)
+        dlg.configure(bg=BG)
+        dlg.resizable(True, True)
+        dlg.minsize(580, 520)
+        dlg.grab_set()
+
+        # Category field
+        cat_row = tk.Frame(dlg, bg=BG)
+        cat_row.pack(fill="x", padx=24, pady=(16,0))
+        tk.Label(cat_row, text=T("category"), bg=BG, fg=TEXT2,
+                 font=(UI_FONT, 10, "bold")).pack(side="left")
+        tk.Label(cat_row, text=f" ({T('optional')})", bg=BG, fg=GRAU,
+                 font=(UI_FONT, 9)).pack(side="left")
+        v_kat = tk.StringVar()
+        existing_cats = sorted(set(g.get("kategorie","") for g in self.vergleiche if g.get("kategorie","")))
+        cat_input_row = tk.Frame(dlg, bg=BG)
+        cat_input_row.pack(fill="x", padx=24, pady=(4,0))
+        cat_combo = ttk.Combobox(cat_input_row, textvariable=v_kat, values=existing_cats,
+                                  font=(UI_FONT, 10))
+        cat_combo.pack(side="left", fill="x", expand=True, ipady=4)
 
         tk.Label(dlg, text=T("search_hint"),
                  bg=BG, fg=TEXT2, font=(UI_FONT, 10)).pack(anchor="w", padx=20, pady=(16,4))
@@ -1912,14 +2182,28 @@ class PreisAlarmApp(tk.Tk):
         canvas.pack(fill="both", expand=True, padx=20, pady=(4,0))
         scroll.pack(side="right", fill="y")
 
-        ziel_row = tk.Frame(dlg, bg=BG)
-        ziel_row.pack(fill="x", padx=20, pady=(10,0))
-        tk.Label(ziel_row, text=T("target_price")+" (€)", bg=BG, fg=TEXT2, width=14,
-                 anchor="w", font=(UI_FONT, 10)).pack(side="left")
-        e_ziel = ttk.Entry(ziel_row)
-        e_ziel.pack(side="left", fill="x", expand=True, ipady=5)
-        tk.Label(ziel_row, text=T("alert_hint"),
-                 bg=BG, fg=GRAU, font=(UI_FONT, 9)).pack(side="left")
+        prices_frame = tk.Frame(dlg, bg=BG)
+        prices_frame.pack(fill="x", padx=20, pady=(10,0))
+
+        # Alarm price row
+        ziel_row = tk.Frame(prices_frame, bg=BG)
+        ziel_row.pack(fill="x", pady=(0,6))
+        tk.Label(ziel_row, text="🔔 " + T("alarm_price") + " (€)", bg=BG, fg=TEXT2,
+                 width=22, anchor="w", font=(UI_FONT, 10)).pack(side="left")
+        e_ziel = ttk.Entry(ziel_row, width=12)
+        e_ziel.pack(side="left", ipady=5)
+        tk.Label(ziel_row, text="  " + T("alert_hint"),
+                 bg=BG, fg=GRAU, font=(UI_FONT, 8), wraplength=250).pack(side="left")
+
+        # Buy now price row
+        buynow_row = tk.Frame(prices_frame, bg=BG)
+        buynow_row.pack(fill="x")
+        tk.Label(buynow_row, text="⚡ " + T("buy_now_price") + " (€)", bg=BG, fg=GELB,
+                 width=22, anchor="w", font=(UI_FONT, 10)).pack(side="left")
+        e_buynow = ttk.Entry(buynow_row, width=12)
+        e_buynow.pack(side="left", ipady=5)
+        tk.Label(buynow_row, text="  " + T("buy_now_hint"),
+                 bg=BG, fg=GRAU, font=(UI_FONT, 8), wraplength=250).pack(side="left")
 
         gefunden = []
         gefundene_source_url = [""]  # Mutable container for thread
@@ -2046,7 +2330,11 @@ class PreisAlarmApp(tk.Tk):
             # Detect currency from source
             ist_gbp = any(d in source_url for d in ["pricespy.co.uk","pricespy.com"]) if source_url else False
             waehrung = "£" if ist_gbp else "€"
+            try:
+                buy_now_val = float(e_buynow.get().replace(",",".")) if e_buynow.get().strip() else None
+            except: buy_now_val = None
             g = {"id": str(int(time.time()*1000)), "name": name, "zielpreis": ziel,
+                 "buy_now_price": buy_now_val, "kategorie": v_kat.get().strip(),
                  "shops": [], "alarm_gesendet": False, "source_url": source_url,
                  "currency": waehrung}
             # Shops erst mit Redirect-URL speichern, dann im Hintergrund auflösen
@@ -2118,7 +2406,7 @@ class PreisAlarmApp(tk.Tk):
             messagebox.showinfo(T("info"), T("select_group")); return
         dlg = tk.Toplevel(self)
         dlg.title(f"Add Shop — {g['name']}")
-        dlg.geometry("520x200")
+        self._center_dialog(dlg, 540, 220)
         dlg.configure(bg=BG)
         dlg.resizable(False, False)
         dlg.grab_set()
@@ -2236,7 +2524,7 @@ class PreisAlarmApp(tk.Tk):
 
         for g in self.vergleiche:
             self.after(0, lambda name=g["name"]: self.status_check_lbl.config(
-                text=f"🔄  Checking: {name[:30]}...", fg=TEXT2))
+                text=T("checking_status").replace("{name}", name[:30]), fg=TEXT2))
 
             source_url = g.get("source_url", "")
             ts = datetime.now().strftime("%d.%m. %H:%M")
@@ -2375,10 +2663,18 @@ class PreisAlarmApp(tk.Tk):
                 # Zielpreis-Alarm
                 cur = g.get("currency", "EUR")
                 cur_sym = "GBP" if cur == "£" else "EUR"
+                buy_now = g.get("buy_now_price")
+                if buy_now and bester <= buy_now and not g.get("buynow_gesendet"):
+                    g["buynow_gesendet"] = True
+                    _titel = T("buy_now_notif")
+                    _text  = f"{g['name'][:40]}\n{bester_shop}: {bester:.2f} {cur_sym}"
+                    self.after(0, lambda t=_titel, x=_text: toast(t, x))
+                elif buy_now and bester > buy_now:
+                    g["buynow_gesendet"] = False
+
                 if bester <= g["zielpreis"] and not g.get("alarm_gesendet"):
                     g["alarm_gesendet"] = True
                     alarme.append({"name": g["name"], "bester": bester, "shop": bester_shop, "currency": cur})
-                    # Show notification with shop data on main thread
                     _titel = T("target_reached_notif")
                     _text  = f"{g['name'][:40]}\n{bester_shop}: {bester:.2f} {cur_sym}"
                     self.after(0, lambda t=_titel, x=_text: toast(t, x))
@@ -2444,6 +2740,9 @@ class PreisAlarmApp(tk.Tk):
             "smtp_server":      self.v_smtp.get().strip(),
             "smtp_port":        int(self.v_port.get() or 587),
             "intervall":        max(1, min(24, int(self.v_int.get() or 6))),
+            "check_window_active": self.v_time_active.get(),
+            "check_time_from":  self.v_time_from.get(),
+            "check_time_to":    self.v_time_to.get(),
         })
         speichere_config(self.config_data)
         messagebox.showinfo(T("saved"), T("settings_saved"))
@@ -2668,11 +2967,11 @@ class PreisAlarmApp(tk.Tk):
             slope_per_day = slope * 86400
             trend_pct = (slope_per_day / y_mean) * 100 if y_mean else 0
             if trend_pct < -0.5:
-                trend_text = f"📉 Falling  ({trend_pct:.1f}%/day)"
+                trend_text = T("trend_falling").replace("{pct}", f"{trend_pct:.1f}")
             elif trend_pct > 0.5:
-                trend_text = f"📈 Rising  (+{trend_pct:.1f}%/day)"
+                trend_text = T("trend_rising").replace("{pct}", f"+{trend_pct:.1f}")
             else:
-                trend_text = f"➡ Stable  ({trend_pct:+.1f}%/day)"
+                trend_text = T("trend_stable").replace("{pct}", f"{trend_pct:+.1f}")
 
         # 2. Volatilität
         volatil_text = "Not enough data"
@@ -2682,11 +2981,11 @@ class PreisAlarmApp(tk.Tk):
                 std = _stats.stdev(vals)
                 cv  = (std / _stats.mean(vals)) * 100
                 if cv < 2:
-                    volatil_text = f"🟢 Very stable  (±{cv:.1f}%)"
+                    volatil_text = T("volat_stable").replace("{pct}", f"{cv:.1f}")
                 elif cv < 5:
-                    volatil_text = f"🟡 Moderate  (±{cv:.1f}%)"
+                    volatil_text = T("volat_moderate").replace("{pct}", f"{cv:.1f}")
                 else:
-                    volatil_text = f"🔴 Volatile  (±{cv:.1f}%)"
+                    volatil_text = T("volat_high").replace("{pct}", f"{cv:.1f}")
             except: pass
 
         # 3. Saisonale Muster
@@ -2701,7 +3000,7 @@ class PreisAlarmApp(tk.Tk):
                 guenstigster_monat = min(monat_preise, key=lambda m: sum(monat_preise[m])/len(monat_preise[m]))
                 monate = ["Jan","Feb","Mar","Apr","May","Jun",
                           "Jul","Aug","Sep","Oct","Nov","Dec"]
-                saison_text = f"Historically cheapest in {monate[guenstigster_monat-1]}"
+                saison_text = T("hist_cheapest").replace("{month}", monate[guenstigster_monat-1])
 
         # 4. Kaufempfehlung
         abstand_zum_ziel = ((preis_jetzt - ziel) / ziel) * 100 if ziel else 0
@@ -2737,16 +3036,16 @@ class PreisAlarmApp(tk.Tk):
             allzeit_tief = min(p[1] for p in alle_punkte)
             diff_vom_tief = ((preis_jetzt - allzeit_tief) / allzeit_tief) * 100
             if diff_vom_tief < 2:
-                allzeit_text = f"🏆 Near all-time low! (+{diff_vom_tief:.1f}% from lowest ever)"
+                allzeit_text = T("alltime_low_near").replace("{pct}", f"{diff_vom_tief:.1f}")
             elif diff_vom_tief < 10:
-                allzeit_text = f"✅ Close to all-time low (+{diff_vom_tief:.1f}%)"
+                allzeit_text = T("alltime_low_close").replace("{pct}", f"{diff_vom_tief:.1f}")
             else:
-                allzeit_text = f"📊 {diff_vom_tief:.1f}% above all-time low ({cur}{allzeit_tief:.2f})"
+                allzeit_text = T("alltime_above").replace("{pct}", f"{diff_vom_tief:.1f}").replace("{cur}", cur).replace("{price}", f"{allzeit_tief:.2f}")
 
         # ── UI ─────────────────────────────────────────────────────────────────
         dlg = tk.Toplevel(self)
         dlg.title(f"🤖 {T('ai_title')} — {g['name']}")
-        dlg.geometry("520x560")
+        self._center_dialog(dlg, 600, 780)
         dlg.configure(bg=BG)
         dlg.resizable(False, False)
 
@@ -2766,7 +3065,7 @@ class PreisAlarmApp(tk.Tk):
         tk.Label(rec_f, text=empfehlung, bg=BG2, fg=empf_farbe,
                  font=(UI_FONT, 16, "bold")).pack(anchor="w", padx=14, pady=(0,4))
         tk.Label(rec_f, text=empf_grund, bg=BG2, fg=TEXT2,
-                 font=(UI_FONT, 9), wraplength=460, justify="left").pack(
+                 font=(UI_FONT, 9), wraplength=500, justify="left").pack(
                  anchor="w", padx=14, pady=(0,12))
 
         def section(text):
@@ -2844,12 +3143,14 @@ class PreisAlarmApp(tk.Tk):
         guenstigster_shop = min(shops, key=lambda s: s.get("preis") or 99999)
         teuerster_shop    = max(shops, key=lambda s: s.get("preis") or 0)
         dlg = tk.Toplevel(self)
-        dlg.title(f"{T('price_analysis')} — {g['name']}"  )
-        dlg.geometry("480x420")
+        dlg.title(f"{T('price_analysis')} — {g['name']}")
+        self._center_dialog(dlg, 560, 660)
         dlg.configure(bg=BG)
         dlg.resizable(False, False)
+
         tk.Label(dlg, text=f"📊  {g['name']}", bg=BG, fg=TEXT,
                  font=(UI_FONT, 13, "bold")).pack(anchor="w", padx=20, pady=(16,12))
+
         def stat_row(label, value, color=TEXT):
             r = tk.Frame(dlg, bg=BG2)
             r.pack(fill="x", padx=20, pady=2)
@@ -2857,21 +3158,22 @@ class PreisAlarmApp(tk.Tk):
                      font=(UI_FONT, 10), width=24, anchor="w").pack(side="left", padx=12, pady=8)
             tk.Label(r, text=value, bg=BG2, fg=color,
                      font=(UI_FONT, 10, "bold"), anchor="e").pack(side="right", padx=12)
-        stat_row(T("shops_tracked"),        str(len(shops)))
-        stat_row(T("target_price_lbl"),         f"{cur}{g['zielpreis']:.2f}")
+
+        stat_row(T("shops_tracked"),    str(len(shops)))
+        stat_row(T("target_price_lbl"), f"{cur}{g['zielpreis']:.2f}")
         tk.Frame(dlg, bg=BORDER, height=1).pack(fill="x", padx=20, pady=6)
         stat_row(T("cur_best"),   f"{cur}{min(preise):.2f}", AKZENT)
         stat_row(T("cur_avg"),    f"{cur}{sum(preise)/len(preise):.2f}", "#60a5fa")
         stat_row(T("cur_worst"),  f"{cur}{max(preise):.2f}", "#f87171")
         tk.Frame(dlg, bg=BORDER, height=1).pack(fill="x", padx=20, pady=6)
         if alle_verlauf:
-            stat_row(T("alltime_low"),   f"{cur}{min(alle_verlauf):.2f}", AKZENT)
-            stat_row(T("alltime_high"),  f"{cur}{max(alle_verlauf):.2f}", "#f87171")
+            stat_row(T("alltime_low"),  f"{cur}{min(alle_verlauf):.2f}", AKZENT)
+            stat_row(T("alltime_high"), f"{cur}{max(alle_verlauf):.2f}", "#f87171")
             stat_row(T("alltime_avg"),  f"{cur}{sum(alle_verlauf)/len(alle_verlauf):.2f}", "#60a5fa")
             stat_row(T("total_points"), str(len(alle_verlauf)))
         tk.Frame(dlg, bg=BORDER, height=1).pack(fill="x", padx=20, pady=6)
         sn = guenstigster_shop.get("shop_name") or guenstigster_shop["shop"]
-        stat_row(T("cheapest_shop"),        f"{sn}  ({cur}{guenstigster_shop.get('preis',0):.2f})", AKZENT)
+        stat_row(T("cheapest_shop"),   f"{sn}  ({cur}{guenstigster_shop.get('preis',0):.2f})", AKZENT)
         sn2 = teuerster_shop.get("shop_name") or teuerster_shop["shop"]
         stat_row(T("expensive_shop"),  f"{sn2}  ({cur}{teuerster_shop.get('preis',0):.2f})", "#f87171")
         savings = max(preise) - min(preise)
@@ -2918,7 +3220,16 @@ class PreisAlarmApp(tk.Tk):
         # Chart-Fenster
         dlg = tk.Toplevel(self)
         dlg.title(f"{T('price_history_title')} — {g['name']}")
-        dlg.geometry("750x460")
+        # Position on same monitor as main window, then maximize
+        self.update_idletasks()
+        mx = self.winfo_x()
+        my = self.winfo_y()
+        mw = self.winfo_width()
+        mh = self.winfo_height()
+        # First set size to fill the monitor area, then maximize
+        dlg.geometry(f"{mw}x{mh}+{mx}+{my}")
+        dlg.update_idletasks()
+        dlg.state("zoomed")
         dlg.configure(bg=BG)
         dlg.resizable(True, True)
 
@@ -3026,10 +3337,10 @@ class PreisAlarmApp(tk.Tk):
                                    font=(UI_FONT, 8), anchor="w")
 
             # Info-Zeile oben rechts
-            info = (f"Data points: {len(preise)}   "
+            info = (f"{T('data_points')}: {len(preise)}   "
                     f"Min: {min(preise):.2f}€   "
-                    f"Ø Avg: {avg_preise[-1]:.2f}€   "
-                    f"Best: {preise[-1]:.2f}€")
+                    f"Ø {T('cur_avg')[:3]}: {avg_preise[-1]:.2f}€   "
+                    f"{T('cur_best')[:4]}: {preise[-1]:.2f}€")
             canvas.create_text(w - pad_r + 80, 14, text=info,
                                fill=TEXT2, font=(UI_FONT, 8), anchor="e")
 
@@ -3076,12 +3387,25 @@ class PreisAlarmApp(tk.Tk):
                     canvas.create_text(px, py2-8, text=f"{preise[i]:.0f}€",
                                        fill=TEXT, font=(UI_FONT, 8, "bold"), anchor=anker)
 
-            # X-Achse
-            max_labels = max(2, min(len(daten), chart_w // 70))
+            # X-Achse — smart label deduplication
+            zr = zeitraum_var.get()
+            is_day = zr == T("day")
+            max_labels = max(2, min(len(daten), chart_w // 65))
             schritt = max(1, len(daten) // max_labels)
+            seen_labels = set()
             for i in range(0, len(daten), schritt):
                 px = cx(i)
-                label = daten[i][5:]  # "03-15 10:49"
+                raw = daten[i]  # "2024-03-15 10:49"
+                if is_day:
+                    label = raw[11:16]        # HH:MM
+                elif zr == T("week"):
+                    label = raw[5:10]         # MM-DD
+                else:
+                    label = raw[5:10]         # MM-DD (deduplicated)
+                # Skip duplicate date labels
+                if not is_day and label in seen_labels:
+                    continue
+                seen_labels.add(label)
                 canvas.create_text(px, pad_t + chart_h + 14, text=label,
                                    fill=TEXT2, font=(UI_FONT, 8), anchor="n")
                 canvas.create_line(px, pad_t + chart_h, px, pad_t + chart_h + 5, fill=BORDER)
@@ -3127,7 +3451,7 @@ class PreisAlarmApp(tk.Tk):
         # Show release notes dialog
         dlg = tk.Toplevel(self)
         dlg.title(f"Update Available — v{new_ver}")
-        dlg.geometry("520x440")
+        self._center_dialog(dlg, 560, 480)
         dlg.configure(bg=BG)
         dlg.resizable(False, False)
         dlg.grab_set()
