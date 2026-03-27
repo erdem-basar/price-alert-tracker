@@ -1,0 +1,23 @@
+# Persönliche Daten — niemals hochladen!
+config.json
+vergleich.json
+log.txt
+
+# Python Cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Build-Ordner
+dist/
+build/
+*.spec
+
+# Debug-Outputs
+debug_output.html
+debug_idealo_output.html
+debug_mehr_output.html
+
+# Windows
+Thumbs.db
+desktop.ini
