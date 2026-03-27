@@ -92,5 +92,18 @@
   "target_lbl": "Zielpreis (€)",
   "theme": "Design",
   "theme_hint": "Neustart zum Übernehmen",
-  "font_label": "Schriftart"
+  "font_label": "Schriftart",
+  "error": "Fehler",
+  "info": "Hinweis",
+  "saved": "Gespeichert",
+  "success": "Erfolg",
+  "delete_confirm": "Gruppe '{name}' löschen?",
+  "enter_valid_price": "Bitte gültigen Zielpreis eingeben.",
+  "save_first": "Bitte zuerst Einstellungen speichern.",
+  "no_groups": "⚠ Keine Gruppen vorhanden",
+  "target_reached_notif": "Zielpreis erreicht!",
+  "no_data_chart": "Noch keine Daten.\nBitte erst 'Alle prüfen' ausführen.",
+  "price_history_title": "Preisverlauf",
+  "shop_diff_insight": "Großer Unterschied! Günstigster spart dir {diff} gegenüber dem teuersten.",
+  "no_prices_yet": "Noch keine Preise. Bitte erst prüfen."
 }

@@ -970,7 +970,7 @@ def alle_quellen_suchen(suchbegriff, max_shops=999):
     return geizhals_suchen(suchbegriff, max_shops)
 
 
-APP_VERSION = "1.6.0"
+APP_VERSION = "1.6.2"
 GITHUB_API  = "https://api.github.com/repos/erdem-basar/preis-alarm-tracker/releases/latest"
 
 def check_for_update():
@@ -2025,7 +2025,7 @@ class PreisAlarmApp(tk.Tk):
             try:
                 ziel = float(e_ziel.get().replace(",","."))
             except:
-                messagebox.showerror("Error", "Please enter a valid target price.", parent=dlg); return
+                messagebox.showerror(T("error"), T("enter_valid_price"), parent=dlg); return
 
             # Geizhals/Idealo URL merken für spätere Preisaktualisierungen
             eingabe_url = e_such.get().strip()
@@ -2115,7 +2115,7 @@ class PreisAlarmApp(tk.Tk):
     def _vg_shop_manuell(self):
         g = self._aktuelle_vg()
         if not g:
-            messagebox.showinfo("Info", "Please select a group first."); return
+            messagebox.showinfo(T("info"), T("select_group")); return
         dlg = tk.Toplevel(self)
         dlg.title(f"Add Shop — {g['name']}")
         dlg.geometry("520x200")
@@ -2195,11 +2195,11 @@ class PreisAlarmApp(tk.Tk):
         sel = self.vg_listbox.curselection()
         if not sel: return
         g = self.vergleiche[sel[0]]
-        if messagebox.askyesno("Delete", f"Delete group '{g['name']}'?"):
+        if messagebox.askyesno(T("delete"), T("delete_confirm").replace("{name}", g["name"])):
             self.vergleiche = [x for x in self.vergleiche if x["id"] != g["id"]]
             self.vg_aktuelle_gruppe = None
             speichere_vergleiche(self.vergleiche)
-            self.vg_titel_lbl.config(text="← Select a group or create new")
+            self.vg_titel_lbl.config(text=T("select_group"))
             self.vg_ziel_lbl.config(text="")
             for row in self.vg_tree.get_children(): self.vg_tree.delete(row)
             self._vg_listbox_laden()
@@ -2220,7 +2220,7 @@ class PreisAlarmApp(tk.Tk):
     # ── Preise prüfen ─────────────────────────────────────────────────────────
     def _vg_alle_pruefen(self):
         if not self.vergleiche:
-            self.status_check_lbl.config(text="⚠ No groups available", fg=GELB)
+            self.status_check_lbl.config(text=T("no_groups"), fg=GELB)
             return
         self.btn_pruefen.config(state="disabled", text=T("checking"))
         self.status_check_lbl.config(text="Fetching prices...", fg=TEXT2)
@@ -2379,7 +2379,7 @@ class PreisAlarmApp(tk.Tk):
                     g["alarm_gesendet"] = True
                     alarme.append({"name": g["name"], "bester": bester, "shop": bester_shop, "currency": cur})
                     # Show notification with shop data on main thread
-                    _titel = f"Target Price Reached!"
+                    _titel = T("target_reached_notif")
                     _text  = f"{g['name'][:40]}\n{bester_shop}: {bester:.2f} {cur_sym}"
                     self.after(0, lambda t=_titel, x=_text: toast(t, x))
                 elif bester > g["zielpreis"]:
@@ -2446,7 +2446,7 @@ class PreisAlarmApp(tk.Tk):
             "intervall":        max(1, min(24, int(self.v_int.get() or 6))),
         })
         speichere_config(self.config_data)
-        messagebox.showinfo("Saved", "Settings saved successfully.")
+        messagebox.showinfo(T("saved"), T("settings_saved"))
 
     def _test_notification(self):
         """Send a test Windows notification with real shop data if available."""
@@ -2471,10 +2471,10 @@ class PreisAlarmApp(tk.Tk):
 
     def _test_email(self):
         if not self.config_data.get("email_absender"):
-            messagebox.showerror("Error", "Please save settings first."); return
+            messagebox.showerror(T("error"), T("save_first")); return
         ok = email_senden(self.config_data, {"name":"Test","shops":[]}, 99.99, "Testshop")
         if ok:
-            messagebox.showinfo("Success", "Test email sent successfully!")
+            messagebox.showinfo(T("success"), T("email_sent"))
         else:
             messagebox.showerror("Error", "Email could not be sent.")
 
@@ -2624,7 +2624,7 @@ class PreisAlarmApp(tk.Tk):
     def _vg_ai_analyse(self):
         g = self._aktuelle_vg()
         if not g:
-            messagebox.showinfo("Info", "Please select a group first.")
+            messagebox.showinfo(T("info"), T("select_group"))
             return
         shops  = g.get("shops", [])
         cur    = g.get("currency", "€")
@@ -2643,7 +2643,7 @@ class PreisAlarmApp(tk.Tk):
 
         preise_aktuell = [s["preis"] for s in shops if s.get("preis")]
         if not preise_aktuell:
-            messagebox.showinfo("Info", "No prices available yet. Run a check first.")
+            messagebox.showinfo(T("info"), T("no_prices_yet"))
             return
 
         preis_jetzt = min(preise_aktuell)
@@ -2826,16 +2826,16 @@ class PreisAlarmApp(tk.Tk):
     def _vg_statistiken(self):
         g = self._aktuelle_vg()
         if not g:
-            messagebox.showinfo("Info", "Please select a group first.")
+            messagebox.showinfo(T("info"), T("select_group"))
             return
         shops = g.get("shops", [])
         if not shops:
-            messagebox.showinfo("Info", "No shops in this group yet.")
+            messagebox.showinfo(T("info"), T("no_prices_yet"))
             return
         cur = g.get("currency", "€")
         preise = [s["preis"] for s in shops if s.get("preis")]
         if not preise:
-            messagebox.showinfo("Info", "No prices available yet. Run a check first.")
+            messagebox.showinfo(T("info"), T("no_prices_yet"))
             return
         alle_verlauf = []
         for s in shops:
@@ -2884,7 +2884,7 @@ class PreisAlarmApp(tk.Tk):
     def _vg_chart_zeigen(self):
         g = self._aktuelle_vg()
         if not g:
-            messagebox.showinfo("Info", "Please select a group first.")
+            messagebox.showinfo(T("info"), T("select_group"))
             return
 
         # Preisverlauf: pro Zeitpunkt günstigsten UND Durchschnittspreis sammeln
@@ -2900,7 +2900,7 @@ class PreisAlarmApp(tk.Tk):
 
         if len(tages_preise) < 1:
             messagebox.showinfo("Info",
-                "No data yet.\nPlease run 'Check All' first.")
+                T("no_data_chart"))
             return
         if len(tages_preise) < 2:
             # Nur ein Datenpunkt — trotzdem anzeigen
@@ -2917,7 +2917,7 @@ class PreisAlarmApp(tk.Tk):
 
         # Chart-Fenster
         dlg = tk.Toplevel(self)
-        dlg.title(f"Price History — {g['name']}")
+        dlg.title(f"{T('price_history_title')} — {g['name']}")
         dlg.geometry("750x460")
         dlg.configure(bg=BG)
         dlg.resizable(True, True)

@@ -92,5 +92,18 @@
   "target_lbl": "Preço alvo (€)",
   "theme": "Tema",
   "theme_hint": "Reiniciar para aplicar",
-  "font_label": "Fonte"
+  "font_label": "Fonte",
+  "error": "Erro",
+  "info": "Info",
+  "saved": "Guardado",
+  "success": "Sucesso",
+  "delete_confirm": "Eliminar '{name}'?",
+  "enter_valid_price": "Digite um preço alvo válido.",
+  "save_first": "Guarde as definições primeiro.",
+  "no_groups": "⚠ Sem grupos",
+  "target_reached_notif": "Preço alvo atingido!",
+  "no_data_chart": "Sem dados ainda.",
+  "price_history_title": "Histórico de preços",
+  "shop_diff_insight": "Grande diferença! O mais barato poupa {diff}.",
+  "no_prices_yet": "Sem preços ainda. Execute uma verificação."
 }

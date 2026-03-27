@@ -92,5 +92,18 @@
   "target_lbl": "Target Price (€)",
   "theme": "Theme",
   "theme_hint": "Restart to apply theme change",
-  "font_label": "Font"
+  "font_label": "Font",
+  "error": "Error",
+  "info": "Info",
+  "saved": "Saved",
+  "success": "Success",
+  "delete_confirm": "Delete group '{name}'?",
+  "enter_valid_price": "Please enter a valid target price.",
+  "save_first": "Please save settings first.",
+  "no_groups": "⚠ No groups available",
+  "target_reached_notif": "Target Price Reached!",
+  "no_data_chart": "No data yet.\nPlease run 'Check All' first.",
+  "price_history_title": "Price History",
+  "shop_diff_insight": "Big difference between shops! Cheapest saves you {diff} vs most expensive.",
+  "no_prices_yet": "No prices available yet. Run a check first."
 }

@@ -92,5 +92,18 @@
   "target_lbl": "السعر المستهدف (€)",
   "theme": "السمة",
   "theme_hint": "أعد التشغيل للتطبيق",
-  "font_label": "الخط"
+  "font_label": "الخط",
+  "error": "خطأ",
+  "info": "معلومات",
+  "saved": "تم الحفظ",
+  "success": "نجاح",
+  "delete_confirm": "حذف '{name}'؟",
+  "enter_valid_price": "أدخل سعراً مستهدفاً صحيحاً.",
+  "save_first": "يرجى حفظ الإعدادات أولاً.",
+  "no_groups": "⚠ لا توجد مجموعات",
+  "target_reached_notif": "تم الوصول للسعر المستهدف!",
+  "no_data_chart": "لا توجد بيانات بعد.",
+  "price_history_title": "تاريخ الأسعار",
+  "shop_diff_insight": "فرق كبير! الأرخص يوفر {diff}.",
+  "no_prices_yet": "لا توجد أسعار بعد. قم بتشغيل فحص أولاً."
 }

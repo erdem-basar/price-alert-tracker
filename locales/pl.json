@@ -92,5 +92,18 @@
   "target_lbl": "Cena docelowa (€)",
   "theme": "Motyw",
   "theme_hint": "Uruchom ponownie aby zastosować",
-  "font_label": "Czcionka"
+  "font_label": "Czcionka",
+  "error": "Błąd",
+  "info": "Info",
+  "saved": "Zapisano",
+  "success": "Sukces",
+  "delete_confirm": "Usunąć '{name}'?",
+  "enter_valid_price": "Podaj prawidłową cenę docelową.",
+  "save_first": "Najpierw zapisz ustawienia.",
+  "no_groups": "⚠ Brak grup",
+  "target_reached_notif": "Cena docelowa osiągnięta!",
+  "no_data_chart": "Brak danych.",
+  "price_history_title": "Historia cen",
+  "shop_diff_insight": "Duża różnica! Najtańszy oszczędza {diff}.",
+  "no_prices_yet": "Brak cen. Najpierw uruchom sprawdzanie."
 }

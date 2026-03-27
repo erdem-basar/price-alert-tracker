@@ -92,5 +92,18 @@
   "target_lbl": "Prix cible (€)",
   "theme": "Thème",
   "theme_hint": "Redémarrer pour appliquer",
-  "font_label": "Police"
+  "font_label": "Police",
+  "error": "Erreur",
+  "info": "Info",
+  "saved": "Enregistré",
+  "success": "Succès",
+  "delete_confirm": "Supprimer '{name}'?",
+  "enter_valid_price": "Entrez un prix cible valide.",
+  "save_first": "Veuillez d'abord enregistrer.",
+  "no_groups": "⚠ Aucun groupe",
+  "target_reached_notif": "Prix cible atteint!",
+  "no_data_chart": "Pas encore de données.",
+  "price_history_title": "Historique des prix",
+  "shop_diff_insight": "Grande différence! Le moins cher vous économise {diff}.",
+  "no_prices_yet": "Pas encore de prix. Lancez une vérification."
 }

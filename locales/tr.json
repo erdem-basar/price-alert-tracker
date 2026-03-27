@@ -92,5 +92,18 @@
   "target_lbl": "Hedef fiyat (€)",
   "theme": "Tema",
   "theme_hint": "Uygulamak için yeniden başlat",
-  "font_label": "Yazı tipi"
+  "font_label": "Yazı tipi",
+  "error": "Hata",
+  "info": "Bilgi",
+  "saved": "Kaydedildi",
+  "success": "Başarı",
+  "delete_confirm": "'{name}' silinsin mi?",
+  "enter_valid_price": "Geçerli bir hedef fiyat girin.",
+  "save_first": "Önce ayarları kaydedin.",
+  "no_groups": "⚠ Grup yok",
+  "target_reached_notif": "Hedef fiyata ulaşıldı!",
+  "no_data_chart": "Henüz veri yok.",
+  "price_history_title": "Fiyat geçmişi",
+  "shop_diff_insight": "Büyük fark! En ucuzu {diff} tasarruf sağlar.",
+  "no_prices_yet": "Henüz fiyat yok. Önce kontrol edin."
 }

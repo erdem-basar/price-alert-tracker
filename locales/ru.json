@@ -92,5 +92,18 @@
   "target_lbl": "Целевая цена (€)",
   "theme": "Тема",
   "theme_hint": "Перезапустите для применения",
-  "font_label": "Шрифт"
+  "font_label": "Шрифт",
+  "error": "Ошибка",
+  "info": "Инфо",
+  "saved": "Сохранено",
+  "success": "Успех",
+  "delete_confirm": "Удалить '{name}'?",
+  "enter_valid_price": "Введите корректную целевую цену.",
+  "save_first": "Сначала сохраните настройки.",
+  "no_groups": "⚠ Нет групп",
+  "target_reached_notif": "Целевая цена достигнута!",
+  "no_data_chart": "Данных пока нет.",
+  "price_history_title": "История цен",
+  "shop_diff_insight": "Большая разница! Дешевейший экономит {diff}.",
+  "no_prices_yet": "Цен пока нет. Сначала выполните проверку."
 }

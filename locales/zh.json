@@ -92,5 +92,18 @@
   "target_lbl": "目标价格 (€)",
   "theme": "主题",
   "theme_hint": "重启以应用",
-  "font_label": "字体"
+  "font_label": "字体",
+  "error": "错误",
+  "info": "提示",
+  "saved": "已保存",
+  "success": "成功",
+  "delete_confirm": "删除'{name}'?",
+  "enter_valid_price": "请输入有效的目标价格。",
+  "save_first": "请先保存设置。",
+  "no_groups": "⚠ 无分组",
+  "target_reached_notif": "已达目标价格！",
+  "no_data_chart": "暂无数据。",
+  "price_history_title": "价格历史",
+  "shop_diff_insight": "店铺差价大！最便宜省{diff}。",
+  "no_prices_yet": "暂无价格。请先运行检查。"
 }

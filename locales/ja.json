@@ -92,5 +92,18 @@
   "target_lbl": "目標価格 (€)",
   "theme": "テーマ",
   "theme_hint": "再起動して適用",
-  "font_label": "フォント"
+  "font_label": "フォント",
+  "error": "エラー",
+  "info": "情報",
+  "saved": "保存済み",
+  "success": "成功",
+  "delete_confirm": "'{name}'を削除?",
+  "enter_valid_price": "有効な目標価格を入力してください。",
+  "save_first": "先に設定を保存してください。",
+  "no_groups": "⚠ グループなし",
+  "target_reached_notif": "目標価格に到達！",
+  "no_data_chart": "データなし。",
+  "price_history_title": "価格履歴",
+  "shop_diff_insight": "店舗間で大きな差！最安値で{diff}節約。",
+  "no_prices_yet": "価格なし。まずチェックを実行してください。"
 }

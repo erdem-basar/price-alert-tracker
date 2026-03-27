@@ -92,5 +92,18 @@
   "target_lbl": "Doelprijs (€)",
   "theme": "Thema",
   "theme_hint": "Herstart om toe te passen",
-  "font_label": "Lettertype"
+  "font_label": "Lettertype",
+  "error": "Fout",
+  "info": "Info",
+  "saved": "Opgeslagen",
+  "success": "Succes",
+  "delete_confirm": "'{name}' verwijderen?",
+  "enter_valid_price": "Voer een geldige doelprijs in.",
+  "save_first": "Sla eerst de instellingen op.",
+  "no_groups": "⚠ Geen groepen",
+  "target_reached_notif": "Doelprijs bereikt!",
+  "no_data_chart": "Nog geen gegevens.",
+  "price_history_title": "Prijsgeschiedenis",
+  "shop_diff_insight": "Groot verschil! Goedkoopste bespaart {diff}.",
+  "no_prices_yet": "Nog geen prijzen. Voer een controle uit."
 }
