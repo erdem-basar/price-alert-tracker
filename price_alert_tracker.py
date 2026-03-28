@@ -1005,7 +1005,7 @@ def check_for_update():
             log(f"Update check: no update needed ({latest} <= {APP_VERSION})")
     except:
         pass
-    return None, None, None
+    return None, None, None, None
 
 
 def email_preisaenderung(cfg, gruppe, geaenderte_shops):
