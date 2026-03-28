@@ -152,5 +152,10 @@
   "email_target_lbl": "Doel",
   "email_auto_check": "Automatische controle",
   "email_target_badge": "🎯 Doel bereikt!",
-  "email_shop_link": "Winkel →"
+  "email_shop_link": "Winkel →",
+  "check_price": "Prijs controleren",
+  "mark_favorite": "Als favoriet markeren",
+  "remove_favorite": "Verwijder favoriet",
+  "col_price": "Beste prijs",
+  "col_last": "Laatste check"
 }

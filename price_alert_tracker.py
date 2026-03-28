@@ -1293,6 +1293,28 @@ def app_icon_erstellen():
     return img
 
 
+def _geometry_auf_monitor(geo_str):
+    """Prüft ob die gespeicherte Fensterposition auf einem der vorhandenen Monitore liegt.
+    Gibt True zurück wenn sichtbar, False wenn außerhalb aller Monitore."""
+    try:
+        m = re.match(r'(\d+)x(\d+)\+(-?\d+)\+(-?\d+)', geo_str)
+        if not m:
+            return False
+        w, h = int(m.group(1)), int(m.group(2))
+        x, y = int(m.group(3)), int(m.group(4))
+        # Fenstermittelpunkt berechnen
+        cx, cy = x + w // 2, y + h // 2
+        import ctypes
+        user32 = ctypes.windll.user32
+        # MONITOR_DEFAULTTONULL = 0: gibt NULL zurück wenn Punkt auf keinem Monitor
+        class POINT(ctypes.Structure):
+            _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+        pt = POINT(cx, cy)
+        monitor = user32.MonitorFromPoint(pt, 0)
+        return monitor != 0
+    except:
+        return True  # Im Fehlerfall annehmen dass Position gültig ist
+
 # ── GUI ───────────────────────────────────────────────────────────────────────
 class PreisAlarmApp(tk.Tk):
     def _center_dialog(self, dlg, w, h):
@@ -1310,10 +1332,15 @@ class PreisAlarmApp(tk.Tk):
         self.vergleiche  = lade_vergleiche()
         self.config_data = lade_config()
         self.title(T("app_title"))
-        # Restore last window position/size
+        # Restore last window position/size — nur wenn Position auf einem Monitor liegt
         geo = self.config_data.get("window_geometry", "960x680")
         try:
-            self.geometry(geo)
+            if _geometry_auf_monitor(geo):
+                self.geometry(geo)
+                self.update_idletasks()
+                self.geometry(geo)
+            else:
+                self.geometry("960x680")  # Fallback: Standardgröße, zentriert auf Monitor 1
         except:
             self.geometry("960x680")
         self.minsize(800, 560)
@@ -1628,8 +1655,8 @@ class PreisAlarmApp(tk.Tk):
 
         cols = ("shop","url","preis","diff","status","zuletzt")
         self.vg_tree = ttk.Treeview(right, columns=cols, show="headings", selectmode="browse")
-        col_defs = [("shop","Shop ↕",130),("url","URL ↕",270),("preis",T("cur_best")[:10]+"↕",95),
-                    ("diff",T("target_price_lbl")+"↕",95),("status","Status ↕",110),("zuletzt",T("data_points")[:7]+"↕",110)]
+        col_defs = [("shop","Shop ↕",140),("url","URL ↕",270),("preis",T("col_price")+" ↕",105),
+                    ("diff",T("target_price_lbl")+" ↕",105),("status","Status ↕",115),("zuletzt",T("col_last")+" ↕",120)]
         for col, text, w in col_defs:
             self.vg_tree.heading(col, text=text,
                                  command=lambda c=col: self._vg_sort_klick(c))
@@ -1651,6 +1678,7 @@ class PreisAlarmApp(tk.Tk):
         self.vg_tree.tag_configure("fehler",    foreground=ROT)
         self.vg_tree.tag_configure("gesunken",  foreground="#6ee7b7", font=(UI_FONT, 10, "bold"), background="#0a1a14")
         self.vg_tree.tag_configure("gestiegen", foreground="#fbbf24", font=(UI_FONT, 10, "bold"), background="#1a1400")
+        self.vg_tree.tag_configure("favorit",   foreground=GELB, font=(UI_FONT, 10, "bold"), background="#1a1500")
         self._vg_listbox_laden()
 
     # ── Tab: Einstellungen ────────────────────────────────────────────────────
@@ -1819,7 +1847,7 @@ class PreisAlarmApp(tk.Tk):
             self.v_smtp.set(server)
             self.v_port.set(str(port))
 
-        for i, (name, server, port, hint) in enumerate(SMTP_PRESETS):
+        for name, server, port, hint in SMTP_PRESETS:
             row_f = tk.Frame(presets_frame, bg=BG)
             row_f.pack(fill="x", pady=2)
             btn = tk.Button(row_f, text=name, bg=BG3, fg=TEXT,
@@ -1983,9 +2011,15 @@ class PreisAlarmApp(tk.Tk):
         row = self.vg_tree.identify_row(event.y)
         if not row: return
         self.vg_tree.selection_set(row)
+        g = self._aktuelle_vg()
+        shop = next((s for s in g["shops"] if s["id"] == row), None) if g else None
+        ist_favorit = shop.get("favorit", False) if shop else False
         menu = tk.Menu(self, tearoff=0, bg=BG3, fg=TEXT, activebackground=AKZENT,
                        activeforeground="#000", relief="flat", font=(UI_FONT, 10))
         menu.add_command(label="🌐  " + T("open_shop"),  command=self._vg_shop_oeffnen)
+        menu.add_command(label="🔄  " + T("check_price"),   command=self._vg_shop_einzeln_pruefen)
+        menu.add_command(label=("★  " + T("remove_favorite") if ist_favorit else "☆  " + T("mark_favorite")),
+                         command=self._vg_shop_favorit_toggle)
         menu.add_separator()
         menu.add_command(label="🗑  " + T("delete_shop"), command=self._vg_shop_loeschen,
                          foreground=ROT)
@@ -2002,8 +2036,8 @@ class PreisAlarmApp(tk.Tk):
             self._sort_col = col
             self._sort_asc = True
         # Pfeil in Überschrift aktualisieren
-        col_namen = {"shop":"Shop","url":"URL","preis":"Cur. Price",
-                     "diff":T("target_price_lbl"),"status":"Status","zuletzt":T("data_points")[:7]}
+        col_namen = {"shop":"Shop","url":"URL","preis":T("col_price"),
+                     "diff":T("target_price_lbl"),"status":"Status","zuletzt":T("col_last")}
         for c, name in col_namen.items():
             if c == self._sort_col:
                 pfeil = " ↑" if self._sort_asc else " ↓"
@@ -2067,13 +2101,17 @@ class PreisAlarmApp(tk.Tk):
             alarm    = preis and preis <= ziel
             noch     = T("still_too_much").replace("{diff}", f"{preis-ziel:.2f} {cur}") if (preis and not alarm) else ""
             status   = T("best_price") if ist_best else (T("target_reached") if alarm else (f"⬇ {noch}" if preis else T("no_price")))
-            # Tag: Preisänderung hat Vorrang vor normalem Status
-            if trend == "gesunken":
+            # Tag: Favorit hat Vorrang, dann Preisänderung, dann normaler Status
+            ist_favorit = s.get("favorit", False)
+            if ist_favorit:
+                tag = "favorit"
+            elif trend == "gesunken":
                 tag = "gesunken"
             elif trend == "gestiegen":
                 tag = "gestiegen"
             else:
                 tag = "best" if ist_best else ("alarm" if alarm else ("fehler" if not preis else "normal"))
+            shop_anzeige = ("⭐ " if ist_favorit else "") + (s.get("shop_name") or SHOPS.get(s["shop"], s["shop"]))
             try:
                 from urllib.parse import urlparse
                 parsed = urlparse(s["url"])
@@ -2081,7 +2119,7 @@ class PreisAlarmApp(tk.Tk):
             except:
                 anzeige_url = s["url"][:50]
             self.vg_tree.insert("", "end", iid=s["id"],
-                                values=(s.get("shop_name") or SHOPS.get(s["shop"], s["shop"]), anzeige_url,
+                                values=(shop_anzeige, anzeige_url,
                                         p_str, d_str, status, s.get("zuletzt","–")),
                                 tags=(tag,))
 
@@ -2505,6 +2543,85 @@ class PreisAlarmApp(tk.Tk):
             speichere_vergleiche(self.vergleiche)
             self._vg_tabelle_laden(g)
 
+    def _vg_shop_einzeln_pruefen(self):
+        """Prüft den Preis eines einzelnen Shops manuell (Rechtsklick → Check Price)."""
+        sel = self.vg_tree.selection()
+        if not sel: return
+        g = self._aktuelle_vg()
+        if not g: return
+        shop = next((s for s in g["shops"] if s["id"] == sel[0]), None)
+        if not shop: return
+        shop_name = shop.get("shop_name") or shop["shop"]
+        self.status_check_lbl.config(text=f"🔄 Checking {shop_name}...", fg=TEXT2)
+
+        def _thread():
+            source_url = g.get("source_url", "")
+            is_pricespy = any(d in source_url for d in ["pricespy.co.uk","pricespy.com"]) if source_url else False
+            preis = None
+            if source_url and ("geizhals.de" in source_url or "geizhals.eu" in source_url or "geizhals.at" in source_url or is_pricespy):
+                if is_pricespy:
+                    neue_shops, _ = pricespy_laden(source_url, max_shops=999)
+                else:
+                    neue_shops, _ = shops_aus_url_laden(source_url, max_shops=999)
+                if neue_shops:
+                    preis_map = {s["name"].lower().strip(): s["preis"] for s in neue_shops}
+                    sn = shop_name.lower().strip()
+                    preis = preis_map.get(sn)
+                    if not preis:
+                        for key, val in preis_map.items():
+                            if key in sn or sn in key:
+                                preis = val
+                                break
+                    if not preis and len(sn) >= 4:
+                        for key, val in preis_map.items():
+                            if key[:5] == sn[:5]:
+                                preis = val
+                                break
+            else:
+                preis = preis_holen(shop["url"], shop["shop"])
+
+            ts = datetime.now().strftime("%d.%m. %H:%M")
+            shop["zuletzt"] = ts
+            if preis:
+                preis_alt = shop.get("preis")
+                if preis_alt and abs(preis - preis_alt) > 0.01:
+                    shop["preis_vorher"] = preis_alt
+                    shop["preis_trend"] = "gesunken" if preis < preis_alt else "gestiegen"
+                else:
+                    shop.pop("preis_vorher", None)
+                    shop.pop("preis_trend", None)
+                shop["preis"] = preis
+                verlauf = shop.get("verlauf", [])
+                verlauf.append({"datum": datetime.now().strftime("%Y-%m-%d %H:%M"), "preis": preis})
+                shop["verlauf"] = verlauf[-1000:]
+            speichere_vergleiche(self.vergleiche)
+
+            def _done():
+                self._vg_tabelle_laden(g)
+                self._vg_listbox_laden()
+                cur = g.get("currency", "€")
+                if preis:
+                    self.status_check_lbl.config(
+                        text=f"✅ {shop_name}: {cur}{preis:.2f}", fg=AKZENT)
+                else:
+                    self.status_check_lbl.config(
+                        text=f"⚠ {shop_name}: no price found", fg=GELB)
+            self.after(0, _done)
+
+        threading.Thread(target=_thread, daemon=True).start()
+
+    def _vg_shop_favorit_toggle(self):
+        """Setzt oder entfernt den Favoriten-Status eines Shops."""
+        sel = self.vg_tree.selection()
+        if not sel: return
+        g = self._aktuelle_vg()
+        if not g: return
+        shop = next((s for s in g["shops"] if s["id"] == sel[0]), None)
+        if not shop: return
+        shop["favorit"] = not shop.get("favorit", False)
+        speichere_vergleiche(self.vergleiche)
+        self._vg_tabelle_laden(g)
+
     # ── Preise prüfen ─────────────────────────────────────────────────────────
     def _vg_alle_pruefen(self):
         if not self.vergleiche:
@@ -2905,17 +3022,14 @@ class PreisAlarmApp(tk.Tk):
         self.destroy()
 
     def _auto_check_starten(self):
-        """Starts automatic price check — immediately on start, then every X hours."""
+        """Starts automatic price check — first check after X hours (per interval setting)."""
         def check_und_planen():
             if self.vergleiche:
                 threading.Thread(target=self._vg_check_alle, daemon=True).start()
             # Intervall neu einlesen damit Änderungen in Einstellungen wirken
             intervall = self.config_data.get("intervall", 6) * 3600 * 1000
             self.after(intervall, check_und_planen)
-        # Sofort beim Start prüfen
-        if self.vergleiche:
-            self.after(5000, lambda: threading.Thread(target=self._vg_check_alle, daemon=True).start())
-        # Ersten Intervall starten
+        # Ersten Check erst nach dem konfigurierten Intervall starten
         intervall = self.config_data.get("intervall", 6) * 3600 * 1000
         self.after(intervall, check_und_planen)
 

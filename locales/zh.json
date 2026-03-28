@@ -152,5 +152,10 @@
   "email_target_lbl": "目标",
   "email_auto_check": "自动价格检查",
   "email_target_badge": "🎯 目标已达成！",
-  "email_shop_link": "店铺 →"
+  "email_shop_link": "店铺 →",
+  "check_price": "检查价格",
+  "mark_favorite": "标记为收藏",
+  "remove_favorite": "取消收藏",
+  "col_price": "最低价格",
+  "col_last": "最近检查"
 }

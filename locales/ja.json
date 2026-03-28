@@ -152,5 +152,10 @@
   "email_target_lbl": "目標",
   "email_auto_check": "自動価格チェック",
   "email_target_badge": "🎯 目標達成！",
-  "email_shop_link": "ショップ →"
+  "email_shop_link": "ショップ →",
+  "check_price": "価格を確認",
+  "mark_favorite": "お気に入りに追加",
+  "remove_favorite": "お気に入りから削除",
+  "col_price": "最安値",
+  "col_last": "最終確認"
 }

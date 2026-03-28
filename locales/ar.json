@@ -152,5 +152,10 @@
   "email_target_lbl": "الهدف",
   "email_auto_check": "فحص الأسعار التلقائي",
   "email_target_badge": "🎯 تم الوصول للهدف!",
-  "email_shop_link": "المتجر →"
+  "email_shop_link": "المتجر →",
+  "check_price": "تحقق من السعر",
+  "mark_favorite": "إضافة للمفضلة",
+  "remove_favorite": "إزالة من المفضلة",
+  "col_price": "أفضل سعر",
+  "col_last": "آخر فحص"
 }

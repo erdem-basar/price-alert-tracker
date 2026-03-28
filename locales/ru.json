@@ -152,5 +152,10 @@
   "email_target_lbl": "Цель",
   "email_auto_check": "Автоматическая проверка цен",
   "email_target_badge": "🎯 Цель достигнута!",
-  "email_shop_link": "Магазин →"
+  "email_shop_link": "Магазин →",
+  "check_price": "Проверить цену",
+  "mark_favorite": "Добавить в избранное",
+  "remove_favorite": "Убрать из избранного",
+  "col_price": "Лучшая цена",
+  "col_last": "Последняя проверка"
 }

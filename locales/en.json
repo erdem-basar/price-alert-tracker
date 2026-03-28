@@ -152,5 +152,10 @@
   "email_target_lbl": "Target",
   "email_auto_check": "Automatic price check",
   "email_target_badge": "🎯 Target reached!",
-  "email_shop_link": "Shop →"
+  "email_shop_link": "Shop →",
+  "check_price": "Check Price",
+  "mark_favorite": "Mark as Favorite",
+  "remove_favorite": "Remove Favorite",
+  "col_price": "Best Price",
+  "col_last": "Last check"
 }

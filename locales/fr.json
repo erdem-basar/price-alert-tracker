@@ -152,5 +152,10 @@
   "email_target_lbl": "Objectif",
   "email_auto_check": "Vérification automatique",
   "email_target_badge": "🎯 Objectif atteint!",
-  "email_shop_link": "Boutique →"
+  "email_shop_link": "Boutique →",
+  "check_price": "Vérifier le prix",
+  "mark_favorite": "Marquer comme favori",
+  "remove_favorite": "Retirer des favoris",
+  "col_price": "Meilleur prix",
+  "col_last": "Dernier check"
 }

@@ -152,5 +152,10 @@
   "email_target_lbl": "Hedef",
   "email_auto_check": "Otomatik fiyat kontrolü",
   "email_target_badge": "🎯 Hedefe ulaşıldı!",
-  "email_shop_link": "Mağaza →"
+  "email_shop_link": "Mağaza →",
+  "check_price": "Fiyatı kontrol et",
+  "mark_favorite": "Favorilere ekle",
+  "remove_favorite": "Favorilerden kaldır",
+  "col_price": "En iyi fiyat",
+  "col_last": "Son kontrol"
 }
