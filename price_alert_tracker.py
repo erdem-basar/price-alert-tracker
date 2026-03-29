@@ -1240,11 +1240,14 @@ def check_for_update():
             html_url = data.get("html_url","")
             zip_url  = data.get("zipball_url","")
             log(f"Update check: GitHub={latest} Local={APP_VERSION}")
-            # Also check assets for a preis_alarm_tracker.zip
+            # Prefer installer EXE asset, fall back to ZIP
             for asset in data.get("assets", []):
-                if asset["name"].endswith(".zip"):
+                name = asset["name"]
+                if name.startswith("PreisAlarm_Setup") and name.endswith(".exe"):
                     zip_url = asset["browser_download_url"]
                     break
+                if name.endswith(".zip"):
+                    zip_url = asset["browser_download_url"]
             notes = data.get("body", "No release notes available.")
             if latest and latest != APP_VERSION:
                 # Only update if remote version is actually newer
@@ -4157,66 +4160,66 @@ class PreisAlarmApp(tk.Tk):
         threading.Thread(target=self._update_installieren,
                          args=(new_ver, zip_url, html_url), daemon=True).start()
 
-    def _update_installieren(self, new_ver, zip_url, html_url):
-        """Downloads the update ZIP and replaces preis_alarm.py, then restarts."""
-        import zipfile, tempfile, shutil
+    def _update_installieren(self, new_ver, asset_url, html_url):
+        """Downloads and installs the update. EXE: runs Inno Setup installer. Script: replaces .py."""
+        import tempfile, shutil
         try:
-            # Download ZIP
-            self.after(0, lambda: self.update_lbl.config(
-                text="⬇ Downloading...", fg=GELB))
-            log(f"Downloading update v{new_ver} from {zip_url[:60]}")
+            log(f"Downloading update v{new_ver} from {asset_url[:60]}")
+            self.after(0, lambda: self.update_lbl.config(text="⬇  0%", fg=GELB))
 
-            r = requests.get(zip_url, timeout=60, stream=True)
+            tmp_suffix = ".exe" if asset_url.endswith(".exe") else ".zip"
+            fd, tmp_str = tempfile.mkstemp(suffix=tmp_suffix)
+            os.close(fd)
+            tmp = Path(tmp_str)
+
+            r = requests.get(asset_url, timeout=120, stream=True)
             r.raise_for_status()
-
-            # Save to temp file
-            tmp = Path(tempfile.mktemp(suffix=".zip"))
+            total = int(r.headers.get("content-length", 0))
+            downloaded = 0
             with open(tmp, "wb") as f:
-                for chunk in r.iter_content(chunk_size=8192):
+                for chunk in r.iter_content(chunk_size=65536):
                     f.write(chunk)
+                    downloaded += len(chunk)
+                    if total:
+                        pct = int(downloaded / total * 100)
+                        self.after(0, lambda p=pct: self.update_lbl.config(
+                            text=f"⬇  {p}%", fg=GELB))
 
-            self.after(0, lambda: self.update_lbl.config(
-                text="📦 Installing...", fg=GELB))
+            self.after(0, lambda: self.update_lbl.config(text="📦 Installing...", fg=GELB))
 
-            # Extract and find preis_alarm.py
-            script_path = Path(__file__).resolve()
-            script_dir  = script_path.parent
-
-            with zipfile.ZipFile(tmp, "r") as z:
-                # Find preis_alarm.py in the ZIP
-                for name in z.namelist():
-                    if name.endswith("price_alert_tracker.py"):
-                        # Extract to temp location
-                        tmp_py = Path(tempfile.mktemp(suffix=".py"))
-                        with z.open(name) as src, open(tmp_py, "wb") as dst:
-                            shutil.copyfileobj(src, dst)
-                        # Replace current file
-                        shutil.move(str(tmp_py), str(script_path))
-                        log(f"Updated preis_alarm.py from {name}")
-                        break
-
-            tmp.unlink(missing_ok=True)
-
-            # Verify the update was applied correctly
-            try:
-                new_content = open(script_path, "r", encoding="utf-8").read()
-                if f'APP_VERSION = "{new_ver}"' in new_content:
-                    log(f"Update to v{new_ver} verified and installed successfully")
-                else:
-                    log(f"Warning: file replaced but version string not found — check asset")
-            except: pass
-
-            # Restart app
-            self.after(0, lambda: self._update_neustart(new_ver))
+            if getattr(sys, "frozen", False):
+                # ── Running as EXE: launch the Inno Setup installer silently ──
+                import subprocess
+                log(f"Launching installer {tmp}")
+                subprocess.Popen(
+                    [str(tmp), "/SILENT", "/CLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS"],
+                    creationflags=subprocess.DETACHED_PROCESS)
+                # Close current app — installer takes over
+                self.after(800, self.destroy)
+            else:
+                # ── Running as Python script: replace .py and restart ──────────
+                import zipfile
+                script_path = Path(__file__).resolve()
+                with zipfile.ZipFile(tmp, "r") as z:
+                    for name in z.namelist():
+                        if name.endswith("price_alert_tracker.py"):
+                            fd2, tmp_py_str = tempfile.mkstemp(suffix=".py")
+                            os.close(fd2)
+                            tmp_py = Path(tmp_py_str)
+                            with z.open(name) as src, open(tmp_py, "wb") as dst:
+                                shutil.copyfileobj(src, dst)
+                            shutil.move(str(tmp_py), str(script_path))
+                            log(f"Updated script from {name}")
+                            break
+                tmp.unlink(missing_ok=True)
+                self.after(0, lambda: self._update_neustart(new_ver))
 
         except Exception as e:
             log(f"Update failed: {e}")
-            self.after(0, lambda: (
-                self.update_lbl.config(
-                    text=f"❌ Update failed — click to retry", fg=ROT),
+            self.after(0, lambda err=str(e): (
+                self.update_lbl.config(text="❌ Update failed — click to retry", fg=ROT),
                 messagebox.showerror("Update Failed",
-                    f"Could not install update automatically.\n"
-                    f"Error: {e}\n\n"
+                    f"Could not install update automatically.\nError: {err}\n\n"
                     f"Please download manually from GitHub.")
             ))
 
