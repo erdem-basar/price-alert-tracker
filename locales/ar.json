@@ -157,5 +157,9 @@
   "mark_favorite": "إضافة للمفضلة",
   "remove_favorite": "إزالة من المفضلة",
   "col_price": "أفضل سعر",
-  "col_last": "آخر فحص"
+  "col_last": "آخر فحص",
+  "clipboard_detected": "تم اكتشاف URL — تتبع؟",
+  "add_to_tracker": "إضافة",
+  "deal_score": "تقييم الصفقة",
+  "search_source_label": "مصدر البحث"
 }

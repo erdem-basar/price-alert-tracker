@@ -157,5 +157,9 @@
   "mark_favorite": "Als favoriet markeren",
   "remove_favorite": "Verwijder favoriet",
   "col_price": "Beste prijs",
-  "col_last": "Laatste check"
+  "col_last": "Laatste check",
+  "clipboard_detected": "URL gedetecteerd — volgen?",
+  "add_to_tracker": "Toevoegen",
+  "deal_score": "Deal Score",
+  "search_source_label": "Standaard zoekbron"
 }

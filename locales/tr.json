@@ -157,5 +157,9 @@
   "mark_favorite": "Favorilere ekle",
   "remove_favorite": "Favorilerden kaldır",
   "col_price": "En iyi fiyat",
-  "col_last": "Son kontrol"
+  "col_last": "Son kontrol",
+  "clipboard_detected": "URL algılandı — takip et?",
+  "add_to_tracker": "Ekle",
+  "deal_score": "Fırsat Puanı",
+  "search_source_label": "Varsayılan arama"
 }

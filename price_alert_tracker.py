@@ -8,6 +8,11 @@ from tkinter import ttk, messagebox, scrolledtext
 import json, smtplib, threading, time, re, os, sys
 from datetime import datetime
 from pathlib import Path
+
+def _resource_path(rel):
+    """Resolve path to a bundled resource — works both in dev and PyInstaller."""
+    base = getattr(sys, '_MEIPASS', Path(__file__).parent)
+    return Path(base) / rel
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.utils import formataddr
@@ -61,12 +66,32 @@ LANGUAGES = {
     "ar": "🇸🇦 العربية",
 }
 
+REGIONS = {
+    "de": {"flag": "🇩🇪", "label": "Deutschland / AT / CH", "engine": "geizhals",  "currency": "€",  "ps_domain": None,           "amz": "amazon.de"},
+    "uk": {"flag": "🇬🇧", "label": "United Kingdom",         "engine": "pricespy",  "currency": "£",  "ps_domain": "pricespy.co.uk","amz": "amazon.co.uk"},
+    "nl": {"flag": "🇳🇱", "label": "Netherlands",            "engine": "pricespy",  "currency": "€",  "ps_domain": "pricespy.nl",   "amz": "amazon.nl"},
+    "fi": {"flag": "🇫🇮", "label": "Suomi",                  "engine": "pricespy",  "currency": "€",  "ps_domain": "pricespy.fi",   "amz": None},
+    "se": {"flag": "🇸🇪", "label": "Sverige",                "engine": "pricespy",  "currency": "kr", "ps_domain": "pricespy.se",   "amz": None},
+    "no": {"flag": "🇳🇴", "label": "Norge",                  "engine": "pricespy",  "currency": "kr", "ps_domain": "pricespy.no",   "amz": None},
+    "dk": {"flag": "🇩🇰", "label": "Danmark",                "engine": "pricespy",  "currency": "kr", "ps_domain": "pricespy.dk",   "amz": None},
+    "fr": {"flag": "🇫🇷", "label": "France",                 "engine": "amazon",    "currency": "€",  "ps_domain": None,            "amz": "amazon.fr"},
+    "it": {"flag": "🇮🇹", "label": "Italia",                 "engine": "amazon",    "currency": "€",  "ps_domain": None,            "amz": "amazon.it"},
+    "es": {"flag": "🇪🇸", "label": "España",                 "engine": "amazon",    "currency": "€",  "ps_domain": None,            "amz": "amazon.es"},
+    "pl": {"flag": "🇵🇱", "label": "Polska",                 "engine": "amazon",    "currency": "zł", "ps_domain": None,            "amz": "amazon.pl"},
+}
+
+def _region_display(key):
+    r = REGIONS.get(key, REGIONS["de"])
+    return f"{r['flag']} {r['label']}"
+
+def _region_currency(key):
+    return REGIONS.get(key, REGIONS["de"])["currency"]
+
 def _load_translations(lang_code):
     """Load translations from locales/lang_code.json file."""
     import json as _json
-    from pathlib import Path as _P
-    # Look next to preis_alarm.py
-    locales_dir = _P(__file__).parent / "locales"
+    # Look next to script / inside PyInstaller bundle
+    locales_dir = _resource_path("locales")
     lang_file   = locales_dir / f"{lang_code}.json"
     fallback    = locales_dir / "en.json"
     try:
@@ -815,6 +840,23 @@ def geizhals_suchen(suchbegriff, max_shops=999):
                 for s, h, t in kandidaten[:3]:
                     log(f"  [{s:+d}] {t[:55]}")
 
+                # Listing mode: multiple positive-score candidates → return all as variants
+                positive = [(s, h, t) for s, h, t in kandidaten if s > 0]
+                if len(positive) >= 2:
+                    variants = []
+                    for _, href, name_text in positive[:30]:
+                        full_url = href if href.startswith("http") else "https://geizhals.de" + href
+                        name_clean = name_text.strip().title()
+                        variants.append({
+                            "name":      name_clean,
+                            "url":       full_url,
+                            "preis":     0,
+                            "shop_key":  "geizhals",
+                            "shop_name": name_clean,
+                        })
+                    log(f"Geizhals: {len(variants)} Varianten → Listing-Modus")
+                    return variants, suchbegriff, such_url
+
             if not produkt_link and kandidaten:
                 produkt_link = kandidaten[0][1]
 
@@ -826,31 +868,126 @@ def geizhals_suchen(suchbegriff, max_shops=999):
                 if shops:
                     return shops, name or suchbegriff, produkt_link
 
-        # Idealo-Fallback
-        log("Kein Ergebnis auf Geizhals, versuche Idealo...")
-        such_url = "https://www.idealo.de/preisvergleich/MainSearchProductCategory.html?q={}".format(
-            requests.utils.quote(suchbegriff))
-        html = _selenium_get(such_url, wait=4)
-        if not html:
-            r = requests.get(such_url, headers=HEADERS, timeout=20)
-            html = r.text
-        soup = BeautifulSoup(html, "html.parser")
-        for a in soup.find_all("a", href=True):
-            href = a["href"]
-            if "/preisvergleich/OffersOfProduct/" in href or re.search(r"/preisvergleich/\d+", href):
-                if not href.startswith("http"):
-                    href = "https://www.idealo.de" + href
-                log(f"Idealo Produktseite: {href[:80]}")
-                shops, name = shops_aus_url_laden(href, max_shops=999)
-                if shops:
-                    return shops, name or suchbegriff, href
-                break
-
-        log("No shops found on Geizhals/Idealo")
+        log("No shops found on Geizhals")
         return [], suchbegriff
     except Exception as e:
         log(f"Search error: {e}")
         return [], suchbegriff, ""
+
+
+def _pricespy_gbp(text):
+    """Extract a GBP price from text."""
+    m = re.search(r"£\s*(\d{1,4}[.,]\d{2})", text)
+    if m:
+        try: return float(m.group(1).replace(",", "."))
+        except: pass
+    return None
+
+
+def _pricespy_listing_laden(url, max_shops=999, prefetched_html=""):
+    """Fetch a PriceSpy listing/search page (/s/slug/) and return all product variants."""
+    import json as _json
+    shops = []
+    page_name = ""
+    try:
+        # Use pre-fetched HTML if provided (e.g. from Selenium search)
+        html = prefetched_html
+        if not html:
+            # Try fast requests first — JSON-LD is in the initial HTML, no JS needed
+            try:
+                r = requests.get(url, headers=HEADERS, timeout=10)
+                if r.status_code == 200:
+                    html = r.text
+                    log(f"PriceSpy listing via requests (fast): {url[:60]}")
+            except Exception:
+                pass
+        # Fall back to Selenium only if requests failed or returned no useful data
+        if not html:
+            html = _selenium_get(url, wait=4)
+        if not html:
+            return [], page_name
+        soup = BeautifulSoup(html, "html.parser")
+
+        h1 = soup.find("h1")
+        if h1:
+            page_name = h1.get_text(strip=True)[:80]
+
+        # Parse JSON-LD structured data (most reliable on PriceSpy listing pages)
+        for script in soup.find_all("script", type="application/ld+json"):
+            try:
+                data = _json.loads(script.string or "")
+                items = []
+                if isinstance(data, list):
+                    items = data
+                elif isinstance(data, dict):
+                    t = data.get("@type", "")
+                    if t == "ItemList":
+                        items = [el.get("item", el) for el in data.get("itemListElement", [])]
+                    else:
+                        items = [data]
+                for item in items:
+                    if item.get("@type") != "Product":
+                        continue
+                    name = item.get("name", "").strip()[:80]
+                    offers = item.get("offers", {})
+                    if isinstance(offers, list):
+                        def _op(o):
+                            try: return float(str(o.get("price", 9999)).replace(",", "."))
+                            except: return 9999
+                        offers = min(offers, key=_op) if offers else {}
+                    price_str = str(offers.get("price", "")).replace(",", ".")
+                    try:
+                        price = float(price_str)
+                        if price <= 0: continue
+                    except:
+                        continue
+                    link = item.get("url", "") or offers.get("url", "")
+                    if link and not link.startswith("http"):
+                        link = "https://pricespy.co.uk" + link
+                    if name and price:
+                        shops.append({
+                            "name":     name,
+                            "url":      link or url,
+                            "preis":    price,
+                            "shop_key": _shop_key_aus_name(name),
+                        })
+            except:
+                pass
+
+        # Fallback: extract product links + visible prices from HTML
+        if not shops:
+            seen = set()
+            for a in soup.find_all("a", href=True):
+                href = a["href"]
+                if "product.php?p=" not in href or href in seen:
+                    continue
+                seen.add(href)
+                if not href.startswith("http"):
+                    href = "https://pricespy.co.uk" + href
+                node = a.parent
+                for _ in range(5):
+                    if node is None:
+                        break
+                    price = _pricespy_gbp(node.get_text(" ", strip=True))
+                    if price:
+                        name_el = node.find(["h2", "h3", "span"])
+                        name = name_el.get_text(strip=True)[:80] if name_el else ""
+                        shops.append({
+                            "name":     name or href,
+                            "url":      href,
+                            "preis":    price,
+                            "shop_key": _shop_key_aus_name(name or href),
+                        })
+                        break
+                    node = node.parent
+                if len(shops) >= max_shops:
+                    break
+
+        log(f"PriceSpy listing: {len(shops)} variants found")
+        return shops[:max_shops], page_name
+    except Exception as e:
+        log(f"PriceSpy listing error: {e}")
+        return [], page_name
 
 
 def pricespy_laden(url, max_shops=999):
@@ -870,26 +1007,22 @@ def pricespy_laden(url, max_shops=999):
         if h1:
             produkt_name = h1.get_text(strip=True)[:80]
 
-        def _parse_gbp(text):
-            m = re.search(r"£\s*(\d{1,4}[.,]\d{2})", text)
-            if m:
-                c = m.group(1).replace(",",".")
-                try: return float(c)
-                except: pass
-            return None
+        # If no price rows found, treat as listing page — return all variants
+        if not soup.find_all(class_="pj-ui-price-row"):
+            if soup.find_all("a", href=lambda h: h and "product.php?p=" in h):
+                log(f"PriceSpy listing page detected, loading all variants: {url[:60]}")
+                return _pricespy_listing_laden(url, max_shops)
 
-        # Parse shops from pj-ui-price-row
+        # Parse shops from pj-ui-price-row (single product page)
         for row in soup.find_all(class_="pj-ui-price-row")[:max_shops]:
             try:
                 text  = row.get_text(" ", strip=True)
-                price = _parse_gbp(text)
+                price = _pricespy_gbp(text)
                 if not price: continue
 
-                # Shop name
                 store_el = row.find(class_=re.compile("StoreInfoTitle"))
                 shop_name = store_el.get_text(strip=True) if store_el else ""
 
-                # Direct shop link
                 shop_url = url
                 for a in row.find_all("a", href=True):
                     if "go-to-shop" in a["href"]:
@@ -916,28 +1049,55 @@ def pricespy_laden(url, max_shops=999):
 
 
 def pricespy_suchen(suchbegriff, max_shops=999):
-    """Searches PriceSpy for a product."""
+    """Searches PriceSpy UK for all product variants matching the search term."""
     try:
-        such_url = "https://pricespy.co.uk/search.php?search={}".format(
-            requests.utils.quote(suchbegriff))
-        log(f"PriceSpy search: {such_url[:80]}")
-        html = _selenium_get(such_url, wait=4)
-        if not html:
-            r = requests.get(such_url, headers=HEADERS, timeout=20)
-            html = r.text
-        soup = BeautifulSoup(html, "html.parser")
+        # 1. Fast path: try slug-based URL (works if term matches PriceSpy's slug format)
+        slug = re.sub(r'[^a-z0-9]+', '-', suchbegriff.lower().strip()).strip('-')
+        slug_url = f"https://pricespy.co.uk/s/{slug}/"
+        log(f"PriceSpy: trying slug {slug_url}")
+        try:
+            head = requests.head(slug_url, headers=HEADERS, timeout=6, allow_redirects=True)
+            if head.status_code == 200:
+                shops, name = _pricespy_listing_laden(slug_url, max_shops)
+                if shops:
+                    return shops, name or suchbegriff, slug_url
+        except Exception:
+            pass
 
-        # Find first product link
-        for a in soup.find_all("a", href=True):
-            href = a["href"]
-            if "product.php?p=" in href:
-                if not href.startswith("http"):
-                    href = "https://pricespy.co.uk" + href
-                log(f"PriceSpy product: {href[:80]}")
-                return pricespy_laden(href, max_shops)
-        return [], suchbegriff
+        # 2. Fallback: Amazon.co.uk (reliable, GBP prices)
+        log(f"PriceSpy slug not found — falling back to Amazon.co.uk for '{suchbegriff}'")
+        shops, name = _amazon_co_uk_suchen(suchbegriff)
+        if shops:
+            return shops, name or suchbegriff, ""
+        return [], suchbegriff, ""
     except Exception as e:
         log(f"PriceSpy search error: {e}")
+        return [], suchbegriff, ""
+
+
+def _amazon_co_uk_suchen(suchbegriff):
+    """Searches Amazon.co.uk for a product — returns GBP price."""
+    try:
+        url = "https://www.amazon.co.uk/s?k={}".format(requests.utils.quote(suchbegriff))
+        r = requests.get(url, headers=HEADERS, timeout=15)
+        soup = BeautifulSoup(r.text, "html.parser")
+        for el in soup.select("[data-asin]:not([data-asin=''])"):
+            asin = el.get("data-asin", "").strip()
+            if not asin or len(asin) < 5: continue
+            preis_el = el.select_one(".a-price .a-offscreen, .a-price-whole")
+            preis = _pricespy_gbp(preis_el.get_text()) if preis_el else None
+            if not preis:
+                preis = _parse(preis_el.get_text()) if preis_el else None
+            titel_el = el.select_one("h2 span, .a-text-normal")
+            titel = titel_el.get_text(strip=True)[:60] if titel_el else suchbegriff
+            if asin and preis:
+                produkt_url = f"https://www.amazon.co.uk/dp/{asin}"
+                return [{"name": "Amazon.co.uk", "url": produkt_url,
+                         "preis": preis, "shop_key": "amazon_uk",
+                         "shop_name": "Amazon.co.uk"}], titel
+        return [], suchbegriff
+    except Exception as e:
+        log(f"Amazon.co.uk search error: {e}")
         return [], suchbegriff
 
 
@@ -965,12 +1125,106 @@ def amazon_suchen(suchbegriff):
         return [], suchbegriff
 
 
+def _amazon_locale_suchen(suchbegriff, domain):
+    """Search Amazon on the given domain (e.g. amazon.co.uk) and return one result."""
+    try:
+        url = f"https://www.{domain}/s?k={requests.utils.quote(suchbegriff)}"
+        r = requests.get(url, headers=HEADERS, timeout=15)
+        soup = BeautifulSoup(r.text, "html.parser")
+        for el in soup.select("[data-asin]:not([data-asin=''])"):
+            asin = el.get("data-asin", "").strip()
+            if not asin or len(asin) < 5: continue
+            preis_el = el.select_one(".a-price .a-offscreen, .a-price-whole")
+            preis = _parse(preis_el.get_text()) if preis_el else None
+            if not preis: continue
+            titel_el = el.select_one("h2 span, .a-text-normal")
+            titel = titel_el.get_text(strip=True)[:60] if titel_el else suchbegriff
+            name = "Amazon." + domain.split("amazon.")[-1]
+            produkt_url = f"https://www.{domain}/dp/{asin}"
+            return [{"name": name, "url": produkt_url,
+                     "preis": preis, "shop_key": "amazon", "shop_name": name}], titel
+        return [], suchbegriff
+    except Exception as e:
+        log(f"Amazon {domain} search error: {e}")
+        return [], suchbegriff
+
+
+def _pricespy_slug_candidates(suchbegriff):
+    """Generate slug candidates by splitting at digit/letter boundaries and permuting."""
+    import itertools
+    tokens = re.findall(r'[a-z]+|\d+', suchbegriff.lower())
+    if not tokens:
+        return []
+    seen = set()
+    candidates = []
+    for perm in itertools.permutations(tokens[:5]):
+        slug = '-'.join(perm)
+        if slug not in seen:
+            seen.add(slug)
+            candidates.append(slug)
+    return candidates
+
+
+def region_suchen(suchbegriff, region_key, max_shops=999):
+    """Main search function — dispatches based on region."""
+    import concurrent.futures
+    r = REGIONS.get(region_key, REGIONS["de"])
+    engine = r["engine"]
+    log(f"Region search: region={region_key} engine={engine} term='{suchbegriff}'")
+
+    if engine == "geizhals":
+        return geizhals_suchen(suchbegriff, max_shops)
+
+    elif engine == "pricespy":
+        domain = r["ps_domain"]
+        candidates = _pricespy_slug_candidates(suchbegriff)
+        log(f"PriceSpy: checking {len(candidates)} slug permutations on {domain}")
+
+        def _head_check(slug):
+            url = f"https://{domain}/s/{slug}/"
+            try:
+                resp = requests.head(url, headers=HEADERS, timeout=5, allow_redirects=True)
+                return url if resp.status_code == 200 else None
+            except Exception:
+                return None
+
+        found_url = None
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+            futures = [ex.submit(_head_check, s) for s in candidates]
+            for fut in concurrent.futures.as_completed(futures):
+                result = fut.result()
+                if result:
+                    found_url = result
+                    break
+
+        if found_url:
+            log(f"PriceSpy: slug match → {found_url}")
+            shops, name = _pricespy_listing_laden(found_url, max_shops)
+            if shops:
+                return shops, name or suchbegriff, found_url
+
+        amz = r.get("amz")
+        if amz:
+            log(f"PriceSpy: no slug matched — falling back to {amz}")
+            shops, name = _amazon_locale_suchen(suchbegriff, amz)
+            if shops:
+                return shops, name, ""
+        return [], suchbegriff, ""
+
+    elif engine == "amazon":
+        amz = r.get("amz", "amazon.de")
+        shops, name = _amazon_locale_suchen(suchbegriff, amz)
+        return shops, name, ""
+
+    return [], suchbegriff, ""
+
+
 def alle_quellen_suchen(suchbegriff, max_shops=999):
     """Main entry: searches on all sources."""
     return geizhals_suchen(suchbegriff, max_shops)
 
 
-APP_VERSION = "1.7.1"
+APP_VERSION = "1.7.2"
 GITHUB_API  = "https://api.github.com/repos/erdem-basar/price-alert-tracker/releases/latest"
 
 def check_for_update():
@@ -1366,7 +1620,7 @@ class PreisAlarmApp(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self._fenster_schliessen)
         # Set window icon
         try:
-            icon_path = Path(__file__).parent / "icon.ico"
+            icon_path = _resource_path("icon.ico")
             if icon_path.exists():
                 self.iconbitmap(str(icon_path))
             elif TRAY_OK:
@@ -1377,8 +1631,9 @@ class PreisAlarmApp(tk.Tk):
         except: pass
         self._tray_icon = None
         self._tray_thread = None
-        # Automatische Preisprüfung starten
+        # Automatische Preisprüfung + Clipboard Monitor starten
         self._auto_check_starten()
+        self._clipboard_monitor_starten()
 
     # ── Hilfsmethoden ─────────────────────────────────────────────────────────
     def _btn(self, parent, text, cmd, bg=BG3, fg=TEXT):
@@ -1531,6 +1786,8 @@ class PreisAlarmApp(tk.Tk):
         self.status_check_lbl = tk.Label(inner_bar, text="", bg=BG2, fg=TEXT2, font=(UI_FONT, 9))
         self.status_check_lbl.pack(side="left", padx=10)
         self._btn(inner_bar, T("delete"), self._vg_loeschen, BG3, ROT).pack(side="right")
+        self.countdown_lbl = tk.Label(inner_bar, text="", bg=BG2, fg=GRAU, font=(UI_FONT, 8))
+        self.countdown_lbl.pack(side="right", padx=12)
 
         pane = tk.Frame(f, bg=BG)
         pane.pack(fill="both", expand=True)
@@ -1757,6 +2014,18 @@ class PreisAlarmApp(tk.Tk):
         self.v_time_to = tk.StringVar(value=cfg.get("check_time_to", "08:00"))
         ttk.Entry(time_row, textvariable=self.v_time_to, width=6).pack(side="left", ipady=3, padx=(4,0))
         tk.Label(time_row, text=T("time_hint"), bg=BG, fg=GRAU, font=(UI_FONT, 8)).pack(side="left", padx=8)
+
+        # Region selector
+        src_row = tk.Frame(wrap, bg=BG)
+        src_row.pack(fill="x", pady=5)
+        tk.Label(src_row, text=T("search_source_label"), bg=BG, fg=TEXT2, width=18, anchor="w",
+                 font=(UI_FONT, 10)).pack(side="left")
+        cur_region = cfg.get("region", "de")
+        self.v_region = tk.StringVar(value=_region_display(cur_region))
+        region_combo = ttk.Combobox(src_row, textvariable=self.v_region,
+                                    values=[_region_display(k) for k in REGIONS],
+                                    state="readonly", width=26, font=(UI_FONT, 10))
+        region_combo.pack(side="left", ipady=4)
 
         tk.Frame(wrap, bg=BORDER, height=1).pack(fill="x", pady=16)
         btn_row = tk.Frame(wrap, bg=BG)
@@ -2172,7 +2441,7 @@ class PreisAlarmApp(tk.Tk):
         entry.bind("<Return>", lambda e: _save())
         entry.bind("<Escape>", lambda e: dlg.destroy())
 
-    def _vg_neu(self):
+    def _vg_neu(self, prefill_url=""):
         dlg = tk.Toplevel(self)
         dlg.title(T("new_group_title"))
         self._center_dialog(dlg, 660, 600)
@@ -2198,8 +2467,19 @@ class PreisAlarmApp(tk.Tk):
 
         tk.Label(dlg, text=T("search_hint"),
                  bg=BG, fg=TEXT2, font=(UI_FONT, 10)).pack(anchor="w", padx=20, pady=(16,4))
-        tk.Label(dlg, text=T("url_tip"),
-                 bg=BG, fg=GRAU, font=(UI_FONT, 8)).pack(anchor="w", padx=20)
+
+        hint_row = tk.Frame(dlg, bg=BG)
+        hint_row.pack(fill="x", padx=20)
+        tk.Label(hint_row, text=T("url_tip"),
+                 bg=BG, fg=GRAU, font=(UI_FONT, 8)).pack(side="left")
+        tk.Label(hint_row, text="   " + T("search_source_label") + ":", bg=BG, fg=GRAU,
+                 font=(UI_FONT, 8)).pack(side="left", padx=(16,4))
+        cur_region_key = self.config_data.get("region", "de")
+        v_src = tk.StringVar(value=_region_display(cur_region_key))
+        src_combo_dlg = ttk.Combobox(hint_row, textvariable=v_src,
+                                     values=[_region_display(k) for k in REGIONS],
+                                     state="readonly", width=22, font=(UI_FONT, 8))
+        src_combo_dlg.pack(side="left", ipady=2)
 
         such_row = tk.Frame(dlg, bg=BG)
         such_row.pack(fill="x", padx=20, pady=(6,0))
@@ -2223,11 +2503,32 @@ class PreisAlarmApp(tk.Tk):
         prices_frame = tk.Frame(dlg, bg=BG)
         prices_frame.pack(fill="x", padx=20, pady=(10,0))
 
+        def _get_dialog_currency():
+            eingabe = e_such.get().strip()
+            # URL paste: detect currency from domain
+            if eingabe.startswith("http"):
+                for _, r in REGIONS.items():
+                    ps = r.get("ps_domain", "")
+                    if ps and ps in eingabe:
+                        return r["currency"]
+                    amz = r.get("amz", "")
+                    if amz and amz in eingabe:
+                        return r["currency"]
+                return "€"
+            # Text search: use selected region
+            sel = v_src.get()
+            region_key = next((k for k in REGIONS if _region_display(k) == sel), "de")
+            return _region_currency(region_key)
+
+        def _is_gbp_source():
+            return _get_dialog_currency() == "£"
+
         # Alarm price row
         ziel_row = tk.Frame(prices_frame, bg=BG)
         ziel_row.pack(fill="x", pady=(0,6))
-        tk.Label(ziel_row, text="🔔 " + T("alarm_price") + " (€)", bg=BG, fg=TEXT2,
-                 width=22, anchor="w", font=(UI_FONT, 10)).pack(side="left")
+        lbl_ziel = tk.Label(ziel_row, text="🔔 " + T("alarm_price") + " (£)" if _is_gbp_source() else "🔔 " + T("alarm_price") + " (€)",
+                            bg=BG, fg=TEXT2, width=22, anchor="w", font=(UI_FONT, 10))
+        lbl_ziel.pack(side="left")
         e_ziel = ttk.Entry(ziel_row, width=12)
         e_ziel.pack(side="left", ipady=5)
         tk.Label(ziel_row, text="  " + T("alert_hint"),
@@ -2236,8 +2537,16 @@ class PreisAlarmApp(tk.Tk):
         # Buy now price row
         buynow_row = tk.Frame(prices_frame, bg=BG)
         buynow_row.pack(fill="x")
-        tk.Label(buynow_row, text="⚡ " + T("buy_now_price") + " (€)", bg=BG, fg=GELB,
-                 width=22, anchor="w", font=(UI_FONT, 10)).pack(side="left")
+        lbl_buynow = tk.Label(buynow_row, text="⚡ " + T("buy_now_price") + " (£)" if _is_gbp_source() else "⚡ " + T("buy_now_price") + " (€)",
+                              bg=BG, fg=GELB, width=22, anchor="w", font=(UI_FONT, 10))
+        lbl_buynow.pack(side="left")
+
+        def _cur_aktualisieren(*_):
+            sym = _get_dialog_currency()
+            lbl_ziel.config(text="🔔 " + T("alarm_price") + f" ({sym})")
+            lbl_buynow.config(text="⚡ " + T("buy_now_price") + f" ({sym})")
+        v_src.trace_add("write", _cur_aktualisieren)
+        e_such.bind("<KeyRelease>", _cur_aktualisieren)
         e_buynow = ttk.Entry(buynow_row, width=12)
         e_buynow.pack(side="left", ipady=5)
         tk.Label(buynow_row, text="  " + T("buy_now_hint"),
@@ -2260,7 +2569,7 @@ class PreisAlarmApp(tk.Tk):
                     "amazon.de", "amazon.co.uk", "amazon.com",
                 ])
             status_lbl.config(
-                text=T("loading_url") if ist_url else T("searching"),
+                text=T("loading_url") if ist_url else f"🔍  Searching on {v_src.get()}...",
                 fg=TEXT2)
 
             def _thread():
@@ -2279,13 +2588,11 @@ class PreisAlarmApp(tk.Tk):
                         shops, name = shops_aus_url_laden(eingabe)
                     gefundene_source_url[0] = eingabe
                 else:
-                    result = alle_quellen_suchen(eingabe)
+                    region_key = next((k for k in REGIONS if _region_display(k) == v_src.get()), "de")
+                    result = region_suchen(eingabe, region_key)
                     shops, name = result[0], result[1]
-                    if len(result) > 2:
+                    if len(result) > 2 and result[2]:
                         gefundene_source_url[0] = result[2]
-                    # If no results on Geizhals, try Amazon
-                    if not shops:
-                        shops, name = amazon_suchen(eingabe)
                 self.after(0, lambda: _fertig(shops, name))
 
             threading.Thread(target=_thread, daemon=True).start()
@@ -2313,10 +2620,9 @@ class PreisAlarmApp(tk.Tk):
             tk.Button(ctrl, text=T("none_btn"), bg=BG3, fg=TEXT2, font=(UI_FONT,8), relief="flat", padx=6, pady=2,
                       command=lambda: [v.set(False) for v,_ in self._vg_shop_vars.values()]).pack(side="left")
 
-            min_preis = min(s["preis"] for s in shops)
-            # Detect currency from entered URL
-            eingabe_cur = e_such.get().strip()
-            dialog_cur = "£" if any(d in eingabe_cur for d in ["pricespy.co.uk","pricespy.com"]) else "€"
+            min_preis = min((s["preis"] for s in shops if s["preis"] > 0), default=0)
+            # Detect currency from entered URL or selected region
+            dialog_cur = _get_dialog_currency()
             for i, s in enumerate(shops):
                 var = tk.BooleanVar(value=True)
                 self._vg_shop_vars[str(i)] = (var, s)
@@ -2327,11 +2633,16 @@ class PreisAlarmApp(tk.Tk):
                                font=(UI_FONT,9)).pack(side="left")
                 tk.Label(row_f, text=s["name"], bg=BG, fg=TEXT,
                          font=(UI_FONT,9,"bold"), width=24, anchor="w").pack(side="left")
-                col = AKZENT if s["preis"] == min_preis else TEXT2
-                tk.Label(row_f, text=f"{dialog_cur}{s['preis']:.2f}", bg=BG, fg=col,
+                if s["preis"] > 0:
+                    col = AKZENT if s["preis"] == min_preis else TEXT2
+                    preis_txt = f"{dialog_cur}{s['preis']:.2f}"
+                else:
+                    col = TEXT2
+                    preis_txt = "–"
+                tk.Label(row_f, text=preis_txt, bg=BG, fg=col,
                          font=(UI_FONT,9,"bold"), width=9, anchor="e").pack(side="left")
 
-            if not e_ziel.get():
+            if not e_ziel.get() and min_preis > 0:
                 e_ziel.insert(0, f"{min_preis * 0.90:.2f}")
             e_ziel.focus()
 
@@ -2366,11 +2677,118 @@ class PreisAlarmApp(tk.Tk):
                 source_url = ""
             log(f"Group source_url: {source_url[:60]}" if source_url else "Gruppe ohne source_url")
             # Detect currency from source
-            ist_gbp = any(d in source_url for d in ["pricespy.co.uk","pricespy.com"]) if source_url else False
-            waehrung = "£" if ist_gbp else "€"
+            waehrung = _get_dialog_currency()
             try:
                 buy_now_val = float(e_buynow.get().replace(",",".")) if e_buynow.get().strip() else None
             except: buy_now_val = None
+            # ── PriceSpy listing: create one group per selected manufacturer variant ──
+            is_ps_listing = bool(source_url and "/s/" in source_url and "pricespy." in source_url)
+            if is_ps_listing:
+                selected_variants = [(sid, s) for sid, (var, s) in self._vg_shop_vars.items() if var.get()]
+                if not selected_variants:
+                    messagebox.showerror(T("error"), "Please select at least one variant.", parent=dlg)
+                    return
+                kat = v_kat.get().strip()
+                dlg.destroy()
+
+                def _create_groups(_variants=selected_variants, _ziel=ziel,
+                                   _bnv=buy_now_val, _kat=kat, _cur=waehrung):
+                    total = len(_variants)
+                    for i, (_, variant) in enumerate(_variants, 1):
+                        vname = variant.get("name", variant.get("shop_name", "Product"))
+                        self.after(0, lambda t=f"⏳ Loading shops {i}/{total}: {vname[:28]}...":
+                                   self.status_check_lbl.config(text=t, fg=TEXT2))
+                        try:
+                            actual_shops, _ = pricespy_laden(variant["url"])
+                        except Exception as e:
+                            log(f"Error loading shops for {vname}: {e}")
+                            actual_shops = []
+                        if not actual_shops:
+                            actual_shops = [variant]
+
+                        g = {"id":           str(int(time.time()*1000)) + str(i),
+                             "name":          vname,
+                             "zielpreis":     _ziel,
+                             "buy_now_price": _bnv,
+                             "kategorie":     _kat,
+                             "shops":         [],
+                             "alarm_gesendet": False,
+                             "source_url":    variant["url"],
+                             "currency":      _cur}
+                        for j, s in enumerate(actual_shops):
+                            g["shops"].append({
+                                "id":        str(int(time.time()*1000)) + str(i) + str(j),
+                                "url":       s["url"],
+                                "shop":      s.get("shop_key", _shop_aus_url(s["url"])),
+                                "shop_name": s.get("shop_name", s.get("name", "")),
+                                "preis":     s["preis"],
+                                "zuletzt":   datetime.now().strftime("%d.%m. %H:%M"),
+                            })
+                        self.vergleiche.append(g)
+                        self.vg_aktuelle_gruppe = g["id"]
+
+                    speichere_vergleiche(self.vergleiche)
+                    self.after(0, self._vg_listbox_laden)
+                    self.after(0, lambda: self.status_check_lbl.config(
+                        text=f"✅ {total} groups created from PriceSpy listing", fg=AKZENT))
+
+                threading.Thread(target=_create_groups, daemon=True).start()
+                return
+            # ── Geizhals listing: create one group per selected product variant ──────
+            is_gh_listing = bool(source_url and "?fs=" in source_url and
+                                 any(d in source_url for d in ["geizhals.de", "geizhals.eu", "geizhals.at"]))
+            if is_gh_listing:
+                selected_variants = [(sid, s) for sid, (var, s) in self._vg_shop_vars.items() if var.get()]
+                if not selected_variants:
+                    messagebox.showerror(T("error"), "Please select at least one variant.", parent=dlg)
+                    return
+                kat = v_kat.get().strip()
+                dlg.destroy()
+
+                def _create_gh_groups(_variants=selected_variants, _ziel=ziel,
+                                      _bnv=buy_now_val, _kat=kat, _cur=waehrung):
+                    total = len(_variants)
+                    for i, (_, variant) in enumerate(_variants, 1):
+                        vname = variant.get("name", variant.get("shop_name", "Product"))
+                        self.after(0, lambda t=f"⏳ Loading shops {i}/{total}: {vname[:28]}...":
+                                   self.status_check_lbl.config(text=t, fg=TEXT2))
+                        try:
+                            actual_shops, _ = shops_aus_url_laden(variant["url"])
+                        except Exception as e:
+                            log(f"Error loading shops for {vname}: {e}")
+                            actual_shops = []
+                        if not actual_shops:
+                            actual_shops = [variant]
+
+                        g = {"id":           str(int(time.time()*1000)) + str(i),
+                             "name":          vname,
+                             "zielpreis":     _ziel,
+                             "buy_now_price": _bnv,
+                             "kategorie":     _kat,
+                             "shops":         [],
+                             "alarm_gesendet": False,
+                             "source_url":    variant["url"],
+                             "currency":      _cur}
+                        for j, s in enumerate(actual_shops):
+                            g["shops"].append({
+                                "id":        str(int(time.time()*1000)) + str(i) + str(j),
+                                "url":       s["url"],
+                                "shop":      s.get("shop_key", _shop_aus_url(s["url"])),
+                                "shop_name": s.get("shop_name", s.get("name", "")),
+                                "preis":     s["preis"],
+                                "zuletzt":   datetime.now().strftime("%d.%m. %H:%M"),
+                            })
+                        self.vergleiche.append(g)
+                        self.vg_aktuelle_gruppe = g["id"]
+
+                    speichere_vergleiche(self.vergleiche)
+                    self.after(0, self._vg_listbox_laden)
+                    self.after(0, lambda: self.status_check_lbl.config(
+                        text=f"✅ {total} groups created from Geizhals search", fg=AKZENT))
+
+                threading.Thread(target=_create_gh_groups, daemon=True).start()
+                return
+            # ── Single group (normal path) ────────────────────────────────────────────
             g = {"id": str(int(time.time()*1000)), "name": name, "zielpreis": ziel,
                  "buy_now_price": buy_now_val, "kategorie": v_kat.get().strip(),
                  "shops": [], "alarm_gesendet": False, "source_url": source_url,
@@ -2436,6 +2854,9 @@ class PreisAlarmApp(tk.Tk):
             padx=20, pady=(10,12), fill="x", ipady=8)
         dlg.lift()
         dlg.focus_force()
+        if prefill_url:
+            e_such.insert(0, prefill_url)
+            dlg.after(300, suchen)
 
     # ── Shop manuell hinzufügen ───────────────────────────────────────────────
     def _vg_shop_manuell(self):
@@ -2829,6 +3250,10 @@ class PreisAlarmApp(tk.Tk):
 
         def _fertig():
             self.btn_pruefen.config(state="normal", text=T("check_all"))
+            # Countdown neu starten nach manuellem Check
+            intervall = self.config_data.get("intervall", 6) * 3600
+            self._naechster_check_ts = time.time() + intervall
+            self._countdown_update()
             if alarme:
                 self.status_check_lbl.config(
                     text=f"🔔 Alert! {alarme[0]['name']}: {alarme[0].get('currency','€')}{alarme[0]['bester']:.2f}", fg=AKZENT)
@@ -2850,16 +3275,18 @@ class PreisAlarmApp(tk.Tk):
 
     # ── Einstellungen ─────────────────────────────────────────────────────────
     def _cfg_speichern(self):
+        region_key = next((k for k in REGIONS if _region_display(k) == self.v_region.get()), "de")
         self.config_data.update({
-            "email_absender":   self.v_abs.get().strip(),
-            "email_passwort":   self.v_pw.get(),
-            "email_empfaenger": self.v_emp.get().strip(),
-            "smtp_server":      self.v_smtp.get().strip(),
-            "smtp_port":        int(self.v_port.get() or 587),
-            "intervall":        max(1, min(24, int(self.v_int.get() or 6))),
+            "email_absender":      self.v_abs.get().strip(),
+            "email_passwort":      self.v_pw.get(),
+            "email_empfaenger":    self.v_emp.get().strip(),
+            "smtp_server":         self.v_smtp.get().strip(),
+            "smtp_port":           int(self.v_port.get() or 587),
+            "intervall":           max(1, min(24, int(self.v_int.get() or 6))),
             "check_window_active": self.v_time_active.get(),
-            "check_time_from":  self.v_time_from.get(),
-            "check_time_to":    self.v_time_to.get(),
+            "check_time_from":     self.v_time_from.get(),
+            "check_time_to":       self.v_time_to.get(),
+            "region":              region_key,
         })
         speichere_config(self.config_data)
         messagebox.showinfo(T("saved"), T("settings_saved"))
@@ -3005,7 +3432,7 @@ class PreisAlarmApp(tk.Tk):
             TrayItem("❌ Quit",               beenden),
         )
         # Use icon.ico for tray if available
-        icon_path = Path(__file__).parent / "icon.ico"
+        icon_path = _resource_path("icon.ico")
         if icon_path.exists():
             from PIL import Image as _PilImg
             img = _PilImg.open(str(icon_path))
@@ -3021,17 +3448,131 @@ class PreisAlarmApp(tk.Tk):
             except: pass
         self.destroy()
 
+    def _clipboard_monitor_starten(self):
+        """Überwacht die Zwischenablage auf Shop-URLs und zeigt ein Popup."""
+        self._last_clipboard  = ""
+        self._clipboard_busy  = False
+
+        SUPPORTED = [
+            "geizhals.de", "geizhals.eu", "geizhals.at",
+            "amazon.de", "amazon.co.uk", "amazon.com",
+            "pricespy.co.uk", "pricespy.com", "idealo.de",
+        ]
+
+        def _check():
+            if not self._clipboard_busy:
+                try:
+                    text = self.clipboard_get().strip()
+                    if text != self._last_clipboard:
+                        self._last_clipboard = text
+                        if text.startswith("http") and any(d in text for d in SUPPORTED):
+                            bereits = any(
+                                g.get("source_url","") == text or
+                                any(s.get("url","") == text for s in g.get("shops",[]))
+                                for g in self.vergleiche
+                            )
+                            if not bereits:
+                                self._clipboard_busy = True
+                                self.after(0, lambda u=text: self._clipboard_popup(u))
+                except:
+                    pass
+            self.after(1500, _check)
+
+        self.after(3000, _check)
+
+    def _clipboard_popup(self, url):
+        """Zeigt ein kleines Popup wenn eine Shop-URL erkannt wurde."""
+        popup = tk.Toplevel(self)
+        popup.title("")
+        popup.attributes("-topmost", True)
+        popup.configure(bg=BG2)
+        popup.resizable(False, False)
+        popup.overrideredirect(True)
+
+        # Position: unten rechts auf dem Bildschirm
+        pw, ph = 400, 105
+        self.update_idletasks()
+        sw = self.winfo_screenwidth()
+        sh = self.winfo_screenheight()
+        popup.geometry(f"{pw}x{ph}+{sw - pw - 20}+{sh - ph - 60}")
+
+        tk.Frame(popup, bg=AKZENT, height=3).pack(fill="x")
+        main_f = tk.Frame(popup, bg=BG2)
+        main_f.pack(fill="both", expand=True, padx=14, pady=10)
+
+        tk.Label(main_f, text="📋  " + T("clipboard_detected"),
+                 bg=BG2, fg=TEXT, font=(UI_FONT, 10, "bold")).pack(anchor="w")
+        display_url = url[:55] + "…" if len(url) > 55 else url
+        tk.Label(main_f, text=display_url, bg=BG2, fg=GRAU,
+                 font=(UI_FONT, 8)).pack(anchor="w", pady=(2, 6))
+
+        btn_f = tk.Frame(main_f, bg=BG2)
+        btn_f.pack(anchor="e")
+
+        def _add():
+            popup.destroy()
+            self._clipboard_busy = False
+            self._vg_neu(prefill_url=url)
+
+        def _skip():
+            popup.destroy()
+            self._clipboard_busy = False
+
+        self._btn(btn_f, "➕  " + T("add_to_tracker"), _add, AKZENT, "#000").pack(side="left", padx=(0, 6))
+        self._btn(btn_f, "✕", _skip, BG3, TEXT2).pack(side="left")
+
+        # Countdown-Balken (8 Sekunden)
+        bar_frame = tk.Frame(popup, bg=BG3, height=3)
+        bar_frame.pack(fill="x", side="bottom")
+        bar = tk.Frame(bar_frame, bg=AKZENT, height=3)
+        bar.place(relwidth=1.0, rely=0, relheight=1.0)
+
+        start = time.time()
+        duration = 8.0
+
+        def _tick():
+            if not popup.winfo_exists():
+                return
+            elapsed = time.time() - start
+            remaining = max(0.0, 1.0 - elapsed / duration)
+            bar.place(relwidth=remaining)
+            if remaining > 0:
+                popup.after(50, _tick)
+            else:
+                _skip()
+
+        popup.after(50, _tick)
+
     def _auto_check_starten(self):
         """Starts automatic price check — first check after X hours (per interval setting)."""
         def check_und_planen():
             if self.vergleiche:
                 threading.Thread(target=self._vg_check_alle, daemon=True).start()
-            # Intervall neu einlesen damit Änderungen in Einstellungen wirken
             intervall = self.config_data.get("intervall", 6) * 3600 * 1000
+            self._naechster_check_ts = time.time() + intervall / 1000
             self.after(intervall, check_und_planen)
-        # Ersten Check erst nach dem konfigurierten Intervall starten
+
         intervall = self.config_data.get("intervall", 6) * 3600 * 1000
+        self._naechster_check_ts = time.time() + intervall / 1000
         self.after(intervall, check_und_planen)
+        self._countdown_update()
+
+    def _countdown_update(self):
+        """Aktualisiert das Countdown-Label jede Minute."""
+        try:
+            verbleibend = int(self._naechster_check_ts - time.time())
+            if verbleibend <= 0:
+                self.countdown_lbl.config(text="⏳ checking soon...")
+            else:
+                h = verbleibend // 3600
+                m = (verbleibend % 3600) // 60
+                if h > 0:
+                    self.countdown_lbl.config(text=f"⏱ next check in {h}h {m:02d}m")
+                else:
+                    self.countdown_lbl.config(text=f"⏱ next check in {m}m")
+        except:
+            pass
+        self.after(30000, self._countdown_update)
 
     # ── AI Analysis ───────────────────────────────────────────────────────────
     def _vg_ai_analyse(self):
@@ -3722,5 +4263,18 @@ if __name__ == "__main__":
         import subprocess
         subprocess.check_call([sys.executable, "-m", "pip", "install",
                                "pystray", "pillow", "--quiet"])
+    import traceback as _tb
+    def _report_cb_exception(exc, val, tb):
+        print("\n=== CALLBACK ERROR ===", flush=True)
+        _tb.print_exception(exc, val, tb)
+        print("======================\n", flush=True)
+    import threading as _threading
+    def _thread_excepthook(args):
+        print("\n=== THREAD ERROR ===", flush=True)
+        _tb.print_exception(args.exc_type, args.exc_value, args.exc_traceback)
+        print("====================\n", flush=True)
+    _threading.excepthook = _thread_excepthook
+
     app = PreisAlarmApp()
+    app.report_callback_exception = _report_cb_exception
     app.mainloop()

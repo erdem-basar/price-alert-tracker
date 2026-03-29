@@ -157,5 +157,9 @@
   "mark_favorite": "Marcar como favorito",
   "remove_favorite": "Quitar de favoritos",
   "col_price": "Mejor precio",
-  "col_last": "Último check"
+  "col_last": "Último check",
+  "clipboard_detected": "URL detectada — ¿rastrear?",
+  "add_to_tracker": "Añadir",
+  "deal_score": "Puntuación",
+  "search_source_label": "Fuente de búsqueda"
 }

@@ -157,5 +157,9 @@
   "mark_favorite": "标记为收藏",
   "remove_favorite": "取消收藏",
   "col_price": "最低价格",
-  "col_last": "最近检查"
+  "col_last": "最近检查",
+  "clipboard_detected": "检测到URL — 追踪?",
+  "add_to_tracker": "添加",
+  "deal_score": "优惠评分",
+  "search_source_label": "默认搜索源"
 }

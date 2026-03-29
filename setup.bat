@@ -87,7 +87,7 @@ echo.
 :: ── EXE bauen ─────────────────────────────────────────────────────────────────
 echo  [i] Erstelle PreisAlarm.exe (1-2 Minuten)...
 cd /d "%~dp0"
-"%PY%" -m PyInstaller --onefile --windowed --name "PreisAlarm" price_alert_tracker.py
+"%PY%" -m PyInstaller PreisAlarm.spec --clean
 
 if %errorlevel% neq 0 (
     echo.

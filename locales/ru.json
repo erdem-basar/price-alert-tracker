@@ -157,5 +157,9 @@
   "mark_favorite": "Добавить в избранное",
   "remove_favorite": "Убрать из избранного",
   "col_price": "Лучшая цена",
-  "col_last": "Последняя проверка"
+  "col_last": "Последняя проверка",
+  "clipboard_detected": "URL обнаружен — отслеживать?",
+  "add_to_tracker": "Добавить",
+  "deal_score": "Рейтинг сделки",
+  "search_source_label": "Источник поиска"
 }

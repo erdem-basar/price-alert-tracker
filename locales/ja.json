@@ -157,5 +157,9 @@
   "mark_favorite": "お気に入りに追加",
   "remove_favorite": "お気に入りから削除",
   "col_price": "最安値",
-  "col_last": "最終確認"
+  "col_last": "最終確認",
+  "clipboard_detected": "URLを検出 — 追跡する?",
+  "add_to_tracker": "追加",
+  "deal_score": "お得度",
+  "search_source_label": "デフォルト検索"
 }
