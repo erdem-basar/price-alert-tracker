@@ -1224,7 +1224,7 @@ def alle_quellen_suchen(suchbegriff, max_shops=999):
     return geizhals_suchen(suchbegriff, max_shops)
 
 
-APP_VERSION = "1.7.5"
+APP_VERSION = "1.7.6"
 GITHUB_API  = "https://api.github.com/repos/erdem-basar/price-alert-tracker/releases/latest"
 
 def check_for_update():
@@ -4481,10 +4481,10 @@ class PreisAlarmApp(tk.Tk):
                 import subprocess
                 log(f"Launching installer {tmp}")
                 subprocess.Popen(
-                    [str(tmp), "/SILENT", "/CLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS"],
+                    [str(tmp), "/SILENT", "/FORCECLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS"],
                     creationflags=subprocess.DETACHED_PROCESS)
-                # Close current app — installer takes over
-                self.after(800, self.destroy)
+                # Vollständig beenden damit der Installer die EXE überschreiben kann
+                self.after(800, lambda: os._exit(0))
             else:
                 # ── Running as Python script: replace .py and restart ──────────
                 import zipfile

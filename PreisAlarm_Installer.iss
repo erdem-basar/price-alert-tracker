@@ -1,5 +1,5 @@
 #define MyAppName      "Preis-Alarm Tracker"
-#define MyAppVersion   "1.7.5"
+#define MyAppVersion   "1.7.6"
 #define MyAppPublisher "erdem-basar"
 #define MyAppURL       "https://github.com/erdem-basar/price-alert-tracker"
 #define MyAppExeName   "PreisAlarm.exe"
