@@ -1224,7 +1224,7 @@ def alle_quellen_suchen(suchbegriff, max_shops=999):
     return geizhals_suchen(suchbegriff, max_shops)
 
 
-APP_VERSION = "1.7.2"
+APP_VERSION = "1.7.3"
 GITHUB_API  = "https://api.github.com/repos/erdem-basar/price-alert-tracker/releases/latest"
 
 def check_for_update():
@@ -1449,6 +1449,116 @@ def email_zusammenfassung(cfg, alle_aenderungen, alarme):
         log(f"Email error: {e}")
 
 
+def email_wochenbericht(cfg, vergleiche):
+    """Sendet eine wöchentliche Zusammenfassung aller verfolgten Produkte."""
+    try:
+        from datetime import datetime as _dt
+        if not vergleiche or not cfg.get("email_absender"):
+            return
+
+        alarm_produkte = []
+        normal_produkte = []
+
+        for g in vergleiche:
+            shops_mit_preis = [s for s in g.get("shops", []) if s.get("preis")]
+            if not shops_mit_preis:
+                continue
+            bester_shop = min(shops_mit_preis, key=lambda s: s["preis"])
+            bester_preis = bester_shop["preis"]
+            ziel = g.get("zielpreis", 0)
+            cur  = g.get("currency", "€")
+            ziel_erreicht = bool(ziel) and bester_preis <= ziel
+            diff_pct = ((bester_preis - ziel) / ziel * 100) if ziel else 0
+            eintrag = {
+                "name":          g["name"],
+                "preis":         bester_preis,
+                "shop_name":     bester_shop.get("shop_name", ""),
+                "url":           bester_shop.get("url", ""),
+                "ziel":          ziel,
+                "cur":           cur,
+                "ziel_erreicht": ziel_erreicht,
+                "diff_pct":      diff_pct,
+            }
+            if ziel_erreicht:
+                alarm_produkte.append(eintrag)
+            else:
+                normal_produkte.append(eintrag)
+
+        normal_produkte.sort(key=lambda x: x["diff_pct"])
+        alle = alarm_produkte + normal_produkte
+        if not alle:
+            log("Digest: keine Produkte mit Preisen — nicht gesendet")
+            return
+
+        def tabellenzeile(e, alarm=False):
+            bg       = "#1a2e1a" if alarm else ""
+            preis_fg = "#22c55e" if alarm else "#f1f5f9"
+            diff_txt = ""
+            if e["ziel"]:
+                if alarm:
+                    diff_txt = f'<span style="color:#4ade80">✅ {T("digest_alarms")}</span>'
+                else:
+                    diff_txt = f'+{e["diff_pct"]:.1f}%'
+            return f"""
+            <tr style="{'background:' + bg if bg else ''}">
+              <td style="padding:10px;color:#f1f5f9;border-bottom:1px solid #2d2d2d">{e['name']}</td>
+              <td style="padding:10px;color:{preis_fg};font-weight:bold;border-bottom:1px solid #2d2d2d">{e['cur']}{e['preis']:.2f}</td>
+              <td style="padding:10px;color:#94a3b8;border-bottom:1px solid #2d2d2d">{e['cur']}{e['ziel']:.2f if e['ziel'] else '—'}</td>
+              <td style="padding:10px;color:#94a3b8;border-bottom:1px solid #2d2d2d">{diff_txt}</td>
+              <td style="padding:10px;border-bottom:1px solid #2d2d2d">
+                <a href="{e['url']}" style="color:#60a5fa;text-decoration:none">{e['shop_name']}</a>
+              </td>
+            </tr>"""
+
+        zeilen = "".join(tabellenzeile(e, e["ziel_erreicht"]) for e in alle)
+        tabellen_kopf = f"""
+        <tr style="background:#1e293b">
+          <th style="padding:8px;text-align:left;color:#94a3b8">{T("digest_col_product")}</th>
+          <th style="padding:8px;text-align:left;color:#94a3b8">{T("digest_col_price")}</th>
+          <th style="padding:8px;text-align:left;color:#94a3b8">{T("digest_col_target")}</th>
+          <th style="padding:8px;text-align:left;color:#94a3b8">{T("digest_col_diff")}</th>
+          <th style="padding:8px;text-align:left;color:#94a3b8">{T("digest_col_shop")}</th>
+        </tr>"""
+
+        alarm_badge = ""
+        if alarm_produkte:
+            alarm_badge = f"""
+            <div style="background:#14532d;border-radius:6px;padding:8px 14px;margin-bottom:16px;display:inline-block">
+              <span style="color:#4ade80;font-weight:bold">🔔 {len(alarm_produkte)} × {T("digest_alarms")}</span>
+            </div>"""
+
+        html = f"""<html><body style="font-family:Arial;max-width:750px;margin:auto;
+                   background:#0f0f0f;color:#f1f5f9;padding:24px">
+          <div style="border-bottom:1px solid #2d2d2d;padding-bottom:12px;margin-bottom:20px">
+            <h1 style="color:#f1f5f9;margin:0;font-size:20px">📊 Price Alert Tracker</h1>
+            <p style="color:#6b7280;margin:4px 0 0;font-size:12px">
+              {T("digest_title")} · {_dt.now().strftime('%d.%m.%Y %H:%M')}
+            </p>
+          </div>
+          {alarm_badge}
+          <table style="width:100%;border-collapse:collapse">
+            {tabellen_kopf}
+            {zeilen}
+          </table>
+          <p style="color:#4b5563;font-size:11px;margin-top:24px;border-top:1px solid #1f2937;padding-top:12px">
+            {T("digest_footer")}
+          </p>
+        </body></html>"""
+
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = T("digest_subject")
+        msg["From"]    = formataddr(("Price Alert", cfg["email_absender"]))
+        msg["To"]      = cfg["email_empfaenger"]
+        msg.attach(MIMEText(html, "html"))
+        with smtplib.SMTP(cfg["smtp_server"], int(cfg["smtp_port"])) as s:
+            s.starttls()
+            s.login(cfg["email_absender"], cfg["email_passwort"])
+            s.sendmail(cfg["email_absender"], cfg["email_empfaenger"], msg.as_string())
+        log(f"Wöchentlicher Bericht gesendet ({len(alle)} Produkte)")
+    except Exception as e:
+        log(f"Digest-Email Fehler: {e}")
+
+
 def email_senden(cfg, gruppe, bester_preis, bester_shop):
     try:
         alle = "".join(
@@ -1592,6 +1702,28 @@ class PreisAlarmApp(tk.Tk):
         # Restore last window position/size — nur wenn Position auf einem Monitor liegt
         geo = self.config_data.get("window_geometry", "960x680")
         try:
+            # Prüfe ob gespeicherte Größe zu groß ist (z.B. gespeichert im maximierten Zustand)
+            m = re.match(r'(\d+)x(\d+)\+(-?\d+)\+(-?\d+)', geo)
+            if m:
+                try:
+                    import ctypes
+                    # Hole Monitor-Info für die gespeicherte Position
+                    class POINT(ctypes.Structure):
+                        _fields_ = [("x", ctypes.c_long), ("y", ctypes.c_long)]
+                    class MONITORINFO(ctypes.Structure):
+                        _fields_ = [("cbSize", ctypes.c_ulong), ("rcMonitor", ctypes.c_long*4),
+                                    ("rcWork", ctypes.c_long*4), ("dwFlags", ctypes.c_ulong)]
+                    pt = POINT(int(m.group(3)), int(m.group(4)))
+                    hmon = ctypes.windll.user32.MonitorFromPoint(pt, 2)  # DEFAULTTONEAREST
+                    mi = MONITORINFO()
+                    mi.cbSize = ctypes.sizeof(MONITORINFO)
+                    ctypes.windll.user32.GetMonitorInfoW(hmon, ctypes.byref(mi))
+                    mon_w = mi.rcMonitor[2] - mi.rcMonitor[0]
+                    mon_h = mi.rcMonitor[3] - mi.rcMonitor[1]
+                    if int(m.group(1)) >= mon_w * 0.95 or int(m.group(2)) >= mon_h * 0.95:
+                        geo = "960x680"
+                except:
+                    pass
             if _geometry_auf_monitor(geo):
                 self.geometry(geo)
                 self.update_idletasks()
@@ -1600,6 +1732,9 @@ class PreisAlarmApp(tk.Tk):
                 self.geometry("960x680")  # Fallback: Standardgröße, zentriert auf Monitor 1
         except:
             self.geometry("960x680")
+        # Fenster-Zustand wiederherstellen (maximiert?)
+        if self.config_data.get("window_state") == "zoomed":
+            self.after(10, lambda: self.state("zoomed"))
         self.minsize(800, 560)
         self.configure(bg=BG)
         # Save position on close (most reliable)
@@ -1610,10 +1745,14 @@ class PreisAlarmApp(tk.Tk):
             self._geo_save_job = self.after(1000, _do_save)
         def _do_save():
             try:
-                g = self.geometry()
-                if g and "+" in g:
-                    self.config_data["window_geometry"] = g
-                    speichere_config(self.config_data)
+                st = self.state()
+                self.config_data["window_state"] = st
+                # Geometry nur speichern wenn nicht maximiert — sonst würde Vollbild-Größe gespeichert
+                if st not in ("zoomed", "fullscreen"):
+                    g = self.geometry()
+                    if g and "+" in g:
+                        self.config_data["window_geometry"] = g
+                speichere_config(self.config_data)
             except: pass
         self.bind("<Configure>", _save_geo)
         self._vg_shop_vars      = {}
@@ -1636,6 +1775,7 @@ class PreisAlarmApp(tk.Tk):
         self._tray_thread = None
         # Automatische Preisprüfung + Clipboard Monitor starten
         self._auto_check_starten()
+        self._digest_scheduler_starten()
         self._clipboard_monitor_starten()
 
     # ── Hilfsmethoden ─────────────────────────────────────────────────────────
@@ -2029,6 +2169,39 @@ class PreisAlarmApp(tk.Tk):
                                     values=[_region_display(k) for k in REGIONS],
                                     state="readonly", width=26, font=(UI_FONT, 10))
         region_combo.pack(side="left", ipady=4)
+
+        # Wöchentlicher Digest
+        section("📊  " + T("digest_email"))
+        digest_row = tk.Frame(wrap, bg=BG)
+        digest_row.pack(fill="x", pady=5)
+        tk.Label(digest_row, text=T("digest_active_lbl"), bg=BG, fg=TEXT2, width=18, anchor="w",
+                 font=(UI_FONT, 10)).pack(side="left")
+        self.v_digest_active = tk.BooleanVar(value=cfg.get("digest_active", False))
+        ttk.Checkbutton(digest_row, variable=self.v_digest_active).pack(side="left")
+
+        digest_day_row = tk.Frame(wrap, bg=BG)
+        digest_day_row.pack(fill="x", pady=5)
+        tk.Label(digest_day_row, text=T("digest_day_lbl"), bg=BG, fg=TEXT2, width=18, anchor="w",
+                 font=(UI_FONT, 10)).pack(side="left")
+        _wt = {"de": ["Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag","Sonntag"],
+               "en": ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]}
+        _lang = cfg.get("language", "en")
+        _weekdays = _wt.get(_lang, _wt["en"])
+        cur_day = min(cfg.get("digest_day", 0), 6)
+        self.v_digest_day = tk.StringVar(value=_weekdays[cur_day])
+        self._digest_weekdays = _weekdays
+        ttk.Combobox(digest_day_row, textvariable=self.v_digest_day, values=_weekdays,
+                     state="readonly", width=14, font=(UI_FONT, 10)).pack(side="left", ipady=4, padx=(0,12))
+        tk.Label(digest_day_row, text=T("digest_time_lbl"), bg=BG, fg=TEXT2,
+                 font=(UI_FONT, 10)).pack(side="left", padx=(0,6))
+        self.v_digest_time = tk.StringVar(value=cfg.get("digest_time", "08:00"))
+        ttk.Entry(digest_day_row, textvariable=self.v_digest_time, width=6).pack(side="left", ipady=3, padx=(0,12))
+        self._btn(digest_day_row, T("digest_test"),
+                  lambda: [self.status_check_lbl.config(text=T("digest_sent"), fg=AKZENT),
+                           threading.Thread(target=email_wochenbericht,
+                                            args=(self.config_data, self.vergleiche),
+                                            daemon=True).start()],
+                  BG3, TEXT).pack(side="left", ipady=2)
 
         tk.Frame(wrap, bg=BORDER, height=1).pack(fill="x", pady=16)
         btn_row = tk.Frame(wrap, bg=BG)
@@ -3279,6 +3452,8 @@ class PreisAlarmApp(tk.Tk):
     # ── Einstellungen ─────────────────────────────────────────────────────────
     def _cfg_speichern(self):
         region_key = next((k for k in REGIONS if _region_display(k) == self.v_region.get()), "de")
+        digest_day_idx = self._digest_weekdays.index(self.v_digest_day.get()) \
+                         if self.v_digest_day.get() in self._digest_weekdays else 0
         self.config_data.update({
             "email_absender":      self.v_abs.get().strip(),
             "email_passwort":      self.v_pw.get(),
@@ -3290,6 +3465,9 @@ class PreisAlarmApp(tk.Tk):
             "check_time_from":     self.v_time_from.get(),
             "check_time_to":       self.v_time_to.get(),
             "region":              region_key,
+            "digest_active":       self.v_digest_active.get(),
+            "digest_day":          digest_day_idx,
+            "digest_time":         self.v_digest_time.get(),
         })
         speichere_config(self.config_data)
         messagebox.showinfo(T("saved"), T("settings_saved"))
@@ -3559,6 +3737,39 @@ class PreisAlarmApp(tk.Tk):
         self._naechster_check_ts = time.time() + intervall / 1000
         self.after(intervall, check_und_planen)
         self._countdown_update()
+
+    def _digest_scheduler_starten(self):
+        """Prüft jede Minute ob der wöchentliche Bericht gesendet werden soll."""
+        def _check():
+            try:
+                cfg = self.config_data
+                if cfg.get("digest_active"):
+                    from datetime import datetime as _dt
+                    now = _dt.now()
+                    digest_day  = cfg.get("digest_day", 0)   # 0=Montag
+                    digest_time = cfg.get("digest_time", "08:00")
+                    if now.weekday() == digest_day:
+                        try:
+                            h, m = map(int, digest_time.split(":"))
+                            in_fenster = (now.hour == h and m <= now.minute <= m + 4)
+                        except:
+                            in_fenster = False
+                        if in_fenster:
+                            last = cfg.get("digest_last_sent", "")
+                            today = now.strftime("%Y-%m-%d")
+                            if last != today:
+                                cfg["digest_last_sent"] = today
+                                speichere_config(cfg)
+                                threading.Thread(
+                                    target=email_wochenbericht,
+                                    args=(cfg, self.vergleiche),
+                                    daemon=True
+                                ).start()
+                                log("Wöchentlicher Bericht wird gesendet")
+            except Exception:
+                pass
+            self.after(60000, _check)
+        self.after(60000, _check)
 
     def _countdown_update(self):
         """Aktualisiert das Countdown-Label jede Minute."""
@@ -4075,6 +4286,75 @@ class PreisAlarmApp(tk.Tk):
 
         canvas.bind("<Configure>", zeichnen)
         dlg.after(100, zeichnen)
+
+        # Mouseover-Tooltip
+        def _tooltip(event):
+            canvas.delete("tooltip")
+            w = canvas.winfo_width()
+            h = canvas.winfo_height()
+            if w < 50 or h < 50:
+                return
+            # Aktuell gefilterte Daten ermitteln
+            from datetime import datetime as _dt, timedelta
+            zr = zeitraum_var.get()
+            jetzt = _dt.now()
+            if zr == T("day"):
+                grenze = (jetzt - timedelta(days=1)).strftime("%Y-%m-%d %H:%M")
+            elif zr == T("week"):
+                grenze = (jetzt - timedelta(weeks=1)).strftime("%Y-%m-%d %H:%M")
+            elif zr == T("month"):
+                grenze = (jetzt - timedelta(days=30)).strftime("%Y-%m-%d %H:%M")
+            else:
+                grenze = ""
+            gefiltert = {d: p for d, p in tages_preise.items() if not grenze or d >= grenze}
+            if not gefiltert:
+                return
+            pkt = sorted(gefiltert.items())
+            p_preise = [p[1] for p in pkt]
+            p_avg    = [round(sum(tages_summen.get(d, [p])) / len(tages_summen.get(d, [p])), 2)
+                        for d, p in pkt]
+            pad_l, pad_r, pad_t, pad_b = 70, 90, 75, 50
+            chart_w = w - pad_l - pad_r
+            n = len(p_preise)
+            if n < 1:
+                return
+            # Nächsten Datenpunkt zum Mauszeiger finden
+            mx = event.x
+            if mx < pad_l or mx > pad_l + chart_w:
+                return
+            idx = round((mx - pad_l) / chart_w * (n - 1))
+            idx = max(0, min(n - 1, idx))
+            alle_werte = p_preise + p_avg + [ziel]
+            min_p = min(alle_werte) * 0.97
+            max_p = max(alle_werte) * 1.03
+            def cx(i): return pad_l + (i / max(n - 1, 1)) * chart_w
+            def cy(p): return pad_t + (1 - (p - min_p) / (max_p - min_p)) * (h - pad_t - pad_b)
+            tx = cx(idx)
+            ty = cy(p_preise[idx])
+            datum = pkt[idx][0]
+            best  = p_preise[idx]
+            avg   = p_avg[idx]
+            cur   = g.get("currency", "€")
+            lines = [datum[:16], f"{T('chart_tooltip_best')}: {cur}{best:.2f}",
+                     f"{T('chart_tooltip_avg')}: {cur}{avg:.2f}"]
+            tw, th, pad = 150, 54, 6
+            # Position: links vom Punkt wenn zu weit rechts
+            bx = tx + 12 if tx + tw + 20 < w else tx - tw - 12
+            by = max(pad_t, ty - th // 2)
+            canvas.create_rectangle(bx, by, bx + tw, by + th,
+                                    fill="#1e293b", outline="#4b5563", width=1, tags="tooltip")
+            for i, line in enumerate(lines):
+                canvas.create_text(bx + pad, by + pad + i * 16, text=line,
+                                   fill=TEXT if i > 0 else TEXT2,
+                                   font=(UI_FONT, 8, "bold" if i == 0 else ""),
+                                   anchor="nw", tags="tooltip")
+            # Kreis am Punkt hervorheben
+            canvas.create_oval(tx - 5, ty - 5, tx + 5, ty + 5,
+                                fill=AKZENT if best <= ziel else "#378ADD",
+                                outline="white", width=1.5, tags="tooltip")
+
+        canvas.bind("<Motion>", _tooltip)
+        canvas.bind("<Leave>", lambda *_: canvas.delete("tooltip"))
 
     # ── Update ────────────────────────────────────────────────────────────────
     def _update_check_bg(self):
