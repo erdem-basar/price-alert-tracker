@@ -1224,7 +1224,7 @@ def alle_quellen_suchen(suchbegriff, max_shops=999):
     return geizhals_suchen(suchbegriff, max_shops)
 
 
-APP_VERSION = "1.7.3"
+APP_VERSION = "1.7.4"
 GITHUB_API  = "https://api.github.com/repos/erdem-basar/price-alert-tracker/releases/latest"
 
 def check_for_update():
@@ -4469,6 +4469,15 @@ class PreisAlarmApp(tk.Tk):
 
             if getattr(sys, "frozen", False):
                 # ── Running as EXE: launch the Inno Setup installer silently ──
+                if not str(tmp).endswith(".exe"):
+                    # Kein EXE-Installer im Release — manuell herunterladen
+                    tmp.unlink(missing_ok=True)
+                    self.after(0, lambda: (
+                        self.update_lbl.config(text="🔗 Download update manually", fg=AKZENT),
+                        messagebox.showinfo("Update Available",
+                            f"v{new_ver} is available.\n\nNo installer found — please download manually from GitHub.\n{html_url}")
+                    ))
+                    return
                 import subprocess
                 log(f"Launching installer {tmp}")
                 subprocess.Popen(
