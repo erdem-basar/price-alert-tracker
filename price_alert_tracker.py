@@ -1228,7 +1228,7 @@ def alle_quellen_suchen(suchbegriff, max_shops=999):
     return geizhals_suchen(suchbegriff, max_shops)
 
 
-APP_VERSION = "1.8.0"
+APP_VERSION = "1.8.1"
 GITHUB_API  = "https://api.github.com/repos/erdem-basar/price-alert-tracker/releases/latest"
 
 def check_for_update():
