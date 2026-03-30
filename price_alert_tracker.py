@@ -818,9 +818,13 @@ def geizhals_suchen(suchbegriff, max_shops=999):
                 # URL-Slug als Produktname (Geizhals rendert Namen per JS)
                 slug = basis.split("/")[-1].lower()
                 slug_clean = re.sub(r"-a\d+.*", "", slug).replace("-", " ")
+                # Normalisiert (ohne Leerzeichen/Bindestriche) für Begriffe wie "5070ti" → "5070 ti"
+                slug_norm = slug_clean.replace(" ", "")
 
-                # Relevanz: Suchwörter im URL-Slug
-                wort_treffer = sum(1 for w in suchwoerter if w in slug_clean)
+                # Relevanz: Suchwörter im URL-Slug (mit normalisiertem Fallback)
+                def _match(w):
+                    return w in slug_clean or w.replace(" ", "") in slug_norm or w in slug_norm
+                wort_treffer = sum(1 for w in suchwoerter if _match(w))
                 # Bonus: alle Wörter vorhanden
                 alle_bonus = 3 if wort_treffer == len(suchwoerter) else 0
                 # Malus: Zubehör-Keywords in URL
@@ -1224,7 +1228,7 @@ def alle_quellen_suchen(suchbegriff, max_shops=999):
     return geizhals_suchen(suchbegriff, max_shops)
 
 
-APP_VERSION = "1.7.7"
+APP_VERSION = "1.7.8"
 GITHUB_API  = "https://api.github.com/repos/erdem-basar/price-alert-tracker/releases/latest"
 
 def check_for_update():
@@ -2795,6 +2799,8 @@ class PreisAlarmApp(tk.Tk):
                       command=lambda: [v.set(True)  for v,_ in self._vg_shop_vars.values()]).pack(side="left", padx=(0,4))
             tk.Button(ctrl, text=T("none_btn"), bg=BG3, fg=TEXT2, font=(UI_FONT,8), relief="flat", padx=6, pady=2,
                       command=lambda: [v.set(False) for v,_ in self._vg_shop_vars.values()]).pack(side="left")
+            tk.Label(ctrl, text="  Preise werden nach der Auswahl geladen", bg=BG, fg=GRAU,
+                     font=(UI_FONT, 8)).pack(side="left", padx=8)
 
             min_preis = min((s["preis"] for s in shops if s["preis"] > 0), default=0)
             # Detect currency from entered URL or selected region
