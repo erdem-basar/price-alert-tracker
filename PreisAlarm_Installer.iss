@@ -1,5 +1,5 @@
 #define MyAppName      "Preis-Alarm Tracker"
-#define MyAppVersion   "1.7.9"
+#define MyAppVersion   "1.8.0"
 #define MyAppPublisher "erdem-basar"
 #define MyAppURL       "https://github.com/erdem-basar/price-alert-tracker"
 #define MyAppExeName   "PreisAlarm.exe"
@@ -52,13 +52,23 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; \
   Flags: uninsdeletevalue; Tasks: startupicon
 
 [Run]
+; Beim manuellen Install: Checkbox anzeigen ob App gestartet werden soll
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; \
   Flags: nowait postinstall skipifsilent
+; Beim Silent Install (Auto-Update): App immer starten
+Filename: "{app}\{#MyAppExeName}"; Flags: nowait runasoriginaluser; \
+  OnlyBelowVersion: 0; Check: WasUpdateInstall
 
 [UninstallRun]
 Filename: "taskkill"; Parameters: "/f /im {#MyAppExeName}"; Flags: runhidden; RunOnceId: "KillApp"
 
 [Code]
+function WasUpdateInstall(): Boolean;
+begin
+  // Gibt True zurück wenn /SILENT übergeben wurde (= Auto-Update)
+  Result := WizardSilent();
+end;
+
 function InitializeSetup(): Boolean;
 begin
   Result := True;

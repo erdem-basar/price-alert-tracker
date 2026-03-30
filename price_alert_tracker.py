@@ -1228,7 +1228,7 @@ def alle_quellen_suchen(suchbegriff, max_shops=999):
     return geizhals_suchen(suchbegriff, max_shops)
 
 
-APP_VERSION = "1.7.9"
+APP_VERSION = "1.8.0"
 GITHUB_API  = "https://api.github.com/repos/erdem-basar/price-alert-tracker/releases/latest"
 
 def check_for_update():
@@ -2037,11 +2037,13 @@ class PreisAlarmApp(tk.Tk):
                                      bg=BG, fg=TEXT2, font=(UI_FONT, 13, "bold"))
         self.vg_titel_lbl.pack(anchor="w")
         self.vg_ziel_lbl = tk.Label(title_col, text="", bg=BG, fg=AKZENT,
-                                    font=(UI_FONT, 9))
+                                    font=(UI_FONT, 9), cursor="hand2")
         self.vg_ziel_lbl.pack(anchor="w")
+        self.vg_ziel_lbl.bind("<Button-1>", lambda *_: self._zielpreis_bearbeiten())
         self.vg_buynow_lbl = tk.Label(title_col, text="", bg=BG, fg=GELB,
-                                      font=(UI_FONT, 9))
+                                      font=(UI_FONT, 9), cursor="hand2")
         self.vg_buynow_lbl.pack(anchor="w")
+        self.vg_buynow_lbl.bind("<Button-1>", lambda *_: self._buynow_bearbeiten())
         self.vg_notiz_lbl = tk.Label(title_col, text="", bg=BG, fg=GRAU,
                                      font=(UI_FONT, 8), cursor="hand2")
         self.vg_notiz_lbl.pack(anchor="w")
@@ -2143,11 +2145,17 @@ class PreisAlarmApp(tk.Tk):
         r.pack(fill="x", pady=5)
         tk.Label(r, text=T("interval_label"), bg=BG, fg=TEXT2, width=18, anchor="w",
                  font=(UI_FONT, 10)).pack(side="left")
-        ttk.Entry(r, textvariable=self.v_int, width=6).pack(side="left", ipady=4)
+        # Nur Zahlen erlauben
+        _vcmd_int = (self.register(lambda s: s.isdigit() or s == ""), "%P")
+        int_combo = ttk.Combobox(r, textvariable=self.v_int, values=[str(i) for i in range(1, 25)],
+                                 width=5, font=(UI_FONT, 10), validate="key", validatecommand=_vcmd_int)
+        int_combo.pack(side="left", ipady=4)
         tk.Label(r, text=T("interval_hint"), bg=BG, fg=GRAU,
                  font=(UI_FONT, 9)).pack(side="left", padx=8)
 
         # Time window
+        _stunden = [f"{h:02d}:00" for h in range(24)]
+        _vcmd_time = (self.register(lambda s: all(c.isdigit() or c == ":" for c in s) and len(s) <= 5), "%P")
         time_row = tk.Frame(wrap, bg=BG)
         time_row.pack(fill="x", pady=5)
         tk.Label(time_row, text=T("check_window"), bg=BG, fg=TEXT2, width=18, anchor="w",
@@ -2156,10 +2164,14 @@ class PreisAlarmApp(tk.Tk):
         ttk.Checkbutton(time_row, variable=self.v_time_active).pack(side="left", padx=(0,8))
         tk.Label(time_row, text=T("from_lbl"), bg=BG, fg=TEXT2, font=(UI_FONT, 9)).pack(side="left")
         self.v_time_from = tk.StringVar(value=cfg.get("check_time_from", "22:00"))
-        ttk.Entry(time_row, textvariable=self.v_time_from, width=6).pack(side="left", ipady=3, padx=(4,8))
+        ttk.Combobox(time_row, textvariable=self.v_time_from, values=_stunden, width=6,
+                     font=(UI_FONT, 10), validate="key", validatecommand=_vcmd_time
+                     ).pack(side="left", ipady=3, padx=(4,8))
         tk.Label(time_row, text=T("to_lbl"), bg=BG, fg=TEXT2, font=(UI_FONT, 9)).pack(side="left")
         self.v_time_to = tk.StringVar(value=cfg.get("check_time_to", "08:00"))
-        ttk.Entry(time_row, textvariable=self.v_time_to, width=6).pack(side="left", ipady=3, padx=(4,0))
+        ttk.Combobox(time_row, textvariable=self.v_time_to, values=_stunden, width=6,
+                     font=(UI_FONT, 10), validate="key", validatecommand=_vcmd_time
+                     ).pack(side="left", ipady=3, padx=(4,0))
         tk.Label(time_row, text=T("time_hint"), bg=BG, fg=GRAU, font=(UI_FONT, 8)).pack(side="left", padx=8)
 
         # Region selector
@@ -2445,6 +2457,44 @@ class PreisAlarmApp(tk.Tk):
                 self._vg_tabelle_laden(g)
                 self.vg_ziel_lbl.config(
                     text=f"{T('target_price_lbl')}: {g.get('currency','€')}{g['zielpreis']:.2f}")
+                dlg.destroy()
+            except ValueError:
+                messagebox.showerror(T("error"), T("enter_valid_price"), parent=dlg)
+        btn_row = tk.Frame(dlg, bg=BG)
+        btn_row.pack(pady=10)
+        self._btn(btn_row, T("save"), _save, AKZENT, "#000").pack(side="left", padx=6, ipadx=10)
+        self._btn(btn_row, T("close"), dlg.destroy, BG3, TEXT).pack(side="left", padx=6, ipadx=10)
+        entry.bind("<Return>", lambda e: _save())
+        entry.bind("<Escape>", lambda e: dlg.destroy())
+
+    def _buynow_bearbeiten(self):
+        """Edit buy-now price inline via popup."""
+        g = self._aktuelle_vg()
+        if not g: return
+        dlg = tk.Toplevel(self)
+        dlg.title(T("buy_now_price"))
+        self._center_dialog(dlg, 320, 140)
+        dlg.configure(bg=BG)
+        dlg.resizable(False, False)
+        dlg.grab_set()
+        tk.Label(dlg, text=f"⚡ {T('buy_now_price')}:", bg=BG, fg=TEXT,
+                 font=(UI_FONT, 10)).pack(anchor="w", padx=20, pady=(16,4))
+        cur_val = str(g["buy_now_price"]) if g.get("buy_now_price") else ""
+        var = tk.StringVar(value=cur_val)
+        entry = ttk.Entry(dlg, textvariable=var, font=(UI_FONT, 12), justify="center")
+        entry.pack(fill="x", padx=20, ipady=6)
+        entry.select_range(0, "end")
+        entry.focus_set()
+        def _save():
+            try:
+                val = var.get().strip().replace(",", ".")
+                g["buy_now_price"] = float(val) if val else None
+                speichere_vergleiche(self.vergleiche)
+                if g.get("buy_now_price"):
+                    self.vg_buynow_lbl.config(
+                        text=f"⚡ {T('buy_now_price')}: {g.get('currency','€')}{g['buy_now_price']:.2f}")
+                else:
+                    self.vg_buynow_lbl.config(text="")
                 dlg.destroy()
             except ValueError:
                 messagebox.showerror(T("error"), T("enter_valid_price"), parent=dlg)
