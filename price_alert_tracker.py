@@ -1297,7 +1297,7 @@ def alle_quellen_suchen(suchbegriff, max_shops=999):
     return geizhals_suchen(suchbegriff, max_shops)
 
 
-APP_VERSION = "1.8.4"
+APP_VERSION = "1.8.5"
 GITHUB_API  = "https://api.github.com/repos/erdem-basar/price-alert-tracker/releases/latest"
 
 def check_for_update():
@@ -1313,14 +1313,21 @@ def check_for_update():
             html_url = data.get("html_url","")
             zip_url  = data.get("zipball_url","")
             log(f"Update check: GitHub={latest} Local={APP_VERSION}")
-            # Prefer installer EXE asset, fall back to ZIP
+            # Prefer Inno Setup installer, then direct EXE, then ZIP
+            direct_exe_url = None
             for asset in data.get("assets", []):
                 name = asset["name"]
+                url  = asset["browser_download_url"]
                 if name.startswith("PreisAlarm_Setup") and name.endswith(".exe"):
-                    zip_url = asset["browser_download_url"]
+                    zip_url = url
+                    direct_exe_url = None
                     break
-                if name.endswith(".zip"):
-                    zip_url = asset["browser_download_url"]
+                if name == "PreisAlarm.exe":
+                    direct_exe_url = url
+                elif name.endswith(".zip") and not direct_exe_url:
+                    zip_url = url
+            if direct_exe_url:
+                zip_url = direct_exe_url
             notes = data.get("body", "No release notes available.")
             if latest and latest != APP_VERSION:
                 # Only update if remote version is actually newer
@@ -4593,22 +4600,42 @@ class PreisAlarmApp(tk.Tk):
             self.after(0, lambda: self.update_lbl.config(text="📦 Installing...", fg=GELB))
 
             if getattr(sys, "frozen", False):
-                # ── Running as EXE: launch the Inno Setup installer silently ──
+                import subprocess as _sp
                 if not str(tmp).endswith(".exe"):
-                    # Kein EXE-Installer im Release — manuell herunterladen
+                    # Kein EXE-Asset — manuell herunterladen
                     tmp.unlink(missing_ok=True)
                     self.after(0, lambda: (
                         self.update_lbl.config(text="🔗 Download update manually", fg=AKZENT),
                         messagebox.showinfo("Update Available",
-                            f"v{new_ver} is available.\n\nNo installer found — please download manually from GitHub.\n{html_url}")
+                            f"v{new_ver} is available.\n\nPlease download manually from GitHub.\n{html_url}")
                     ))
                     return
-                import subprocess
-                log(f"Launching installer {tmp}")
-                subprocess.Popen(
-                    [str(tmp), "/SILENT", "/FORCECLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS"],
-                    creationflags=subprocess.DETACHED_PROCESS)
-                # Vollständig beenden damit der Installer die EXE überschreiben kann
+                if "PreisAlarm_Setup" in asset_url:
+                    # ── Inno Setup Installer ──────────────────────────────────
+                    log(f"Launching installer {tmp}")
+                    _sp.Popen(
+                        [str(tmp), "/SILENT", "/FORCECLOSEAPPLICATIONS", "/RESTARTAPPLICATIONS"],
+                        creationflags=_sp.DETACHED_PROCESS)
+                else:
+                    # ── Direct EXE self-replace via batch script ──────────────
+                    current_exe = Path(sys.executable).resolve()
+                    bat = (
+                        "@echo off\r\n"
+                        "timeout /t 2 /nobreak > nul\r\n"
+                        f"copy /y \"{tmp}\" \"{current_exe}\"\r\n"
+                        f"del \"{tmp}\"\r\n"
+                        f"start \"\" \"{current_exe}\"\r\n"
+                        "del \"%~f0\"\r\n"
+                    )
+                    import tempfile as _tf
+                    fd_bat, bat_path = _tf.mkstemp(suffix=".bat")
+                    os.close(fd_bat)
+                    Path(bat_path).write_text(bat, encoding="cp1252")
+                    log(f"Self-replace via batch: {bat_path}")
+                    _sp.Popen(
+                        ["cmd", "/c", bat_path],
+                        creationflags=_sp.DETACHED_PROCESS | _sp.CREATE_NO_WINDOW,
+                        close_fds=True)
                 self.after(800, lambda: os._exit(0))
             else:
                 # ── Running as Python script: replace .py and restart ──────────
