@@ -191,13 +191,23 @@ def _selenium_get(url, wait=5):
             time.sleep(1.5)
             for i in range(15):
                 geklickt = driver.execute_script("""
-                    var btn = document.querySelector('.button--load-more-offers');
-                    if (btn && btn.textContent.trim() !== 'No more offers') {
-                        btn.scrollIntoView({block: 'center'});
-                        btn.click();
-                        return true;
+                    var selectors = [
+                        '.button--load-more-offers',
+                        '[class*="load-more-offer"]',
+                        '[class*="load-more"]',
+                        '.listview__load-more'
+                    ];
+                    var btn = null;
+                    for (var s of selectors) {
+                        btn = document.querySelector(s);
+                        if (btn) break;
                     }
-                    return false;
+                    if (!btn) return false;
+                    var t = btn.textContent.trim().toLowerCase();
+                    if (t === 'no more offers' || t === 'keine weiteren angebote') return false;
+                    btn.scrollIntoView({block: 'center'});
+                    btn.click();
+                    return true;
                 """)
                 if geklickt:
                     time.sleep(2.5)
@@ -254,7 +264,7 @@ def shops_aus_url_laden(url):
 
         log(f"JSON-LD: {len(shops)} Shops gefunden")
 
-        # Geizhals HTML-Parsing
+        # Geizhals HTML-Parsing (alte Struktur: class="offer")
         if not shops:
             for offer in soup.find_all(class_="offer"):
                 try:
@@ -276,7 +286,41 @@ def shops_aus_url_laden(url):
                         shops.append({"shop_name": shop_name, "preis": preis})
                 except:
                     continue
-            log(f"Geizhals HTML: {len(shops)} Shops gefunden")
+            log(f"Geizhals HTML (alt): {len(shops)} Shops gefunden")
+
+        # Geizhals HTML-Parsing (neue Struktur: listview__item)
+        if not shops:
+            skip = {"zum angebot", "agb", "infos", "bewertung", "store"}
+            for item in soup.find_all(
+                lambda t: t.name and any("listview__item" in c for c in t.get("class", []))
+            ):
+                try:
+                    preis_el = item.find(
+                        lambda t: t.name and any("listview__price" in c for c in t.get("class", []))
+                    )
+                    if not preis_el:
+                        continue
+                    preis = _parse(preis_el.get_text(strip=True))
+                    if not preis:
+                        continue
+                    shop_name = ""
+                    merchant_el = item.find(
+                        lambda t: t.name and any("merchant" in c.lower() for c in t.get("class", []))
+                    )
+                    if merchant_el:
+                        shop_name = merchant_el.get_text(strip=True)
+                    if not shop_name:
+                        for a in item.find_all("a", href=True):
+                            text = a.get_text(strip=True)
+                            if "redir" in a["href"] and text and text.lower() not in skip and len(text) > 1:
+                                shop_name = text
+                                break
+                    if shop_name and shop_name not in anbieter:
+                        anbieter.add(shop_name)
+                        shops.append({"shop_name": shop_name, "preis": preis})
+                except:
+                    continue
+            log(f"Geizhals HTML (neu): {len(shops)} Shops gefunden")
 
         log(f"Total: {len(shops)} Shops von {url[:60]}")
         return shops

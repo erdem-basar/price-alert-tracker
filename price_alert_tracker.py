@@ -439,10 +439,18 @@ def redirects_aufloesen_via_produktseite(source_url, shops):
         # "Mehr Angebote" laden
         for _ in range(15):
             geklickt = driver.execute_script("""
-                var btn = document.querySelector('.button--load-more-offers');
-                if (btn && btn.textContent.trim() !== 'No more offers') {
-                    btn.click(); return true;
-                } return false;
+                var selectors = [
+                    '.button--load-more-offers',
+                    '[class*="load-more-offer"]',
+                    '[class*="load-more"]',
+                    '.listview__load-more'
+                ];
+                var btn = null;
+                for (var s of selectors) { btn = document.querySelector(s); if (btn) break; }
+                if (!btn) return false;
+                var t = btn.textContent.trim().toLowerCase();
+                if (t === 'no more offers' || t === 'keine weiteren angebote') return false;
+                btn.click(); return true;
             """)
             if not geklickt: break
             time.sleep(2)
@@ -598,13 +606,23 @@ def _selenium_get(url, wait=4):
             time.sleep(1.5)
             for i in range(15):
                 geklickt = driver.execute_script("""
-                    var btn = document.querySelector('.button--load-more-offers');
-                    if (btn && btn.textContent.trim() !== 'No more offers') {
-                        btn.scrollIntoView({block: 'center'});
-                        btn.click();
-                        return true;
+                    var selectors = [
+                        '.button--load-more-offers',
+                        '[class*="load-more-offer"]',
+                        '[class*="load-more"]',
+                        '.listview__load-more'
+                    ];
+                    var btn = null;
+                    for (var s of selectors) {
+                        btn = document.querySelector(s);
+                        if (btn) break;
                     }
-                    return false;
+                    if (!btn) return false;
+                    var t = btn.textContent.trim().toLowerCase();
+                    if (t === 'no more offers' || t === 'keine weiteren angebote') return false;
+                    btn.scrollIntoView({block: 'center'});
+                    btn.click();
+                    return true;
                 """)
                 if geklickt:
                     time.sleep(2.5)
@@ -696,20 +714,14 @@ def shops_aus_url_laden(url, max_shops=999):
 
         log(f"JSON-LD: {len(shops)} Shops gefunden")
 
-        # ── Geizhals HTML-Parsing ──────────────────────────────────────────────
+        # ── Geizhals HTML-Parsing (alte Struktur: class="offer") ─────────────────
         if not shops and ist_geizhals:
-            # Geizhals: jedes Angebot ist ein Element mit class="offer"
-            # Preis: class="gh_price" → Text "€ 659,00"
-            # Shop-Name: <a href="geizhals.de/redir/..."> mit Shop-Name als Text
             for offer in soup.find_all(class_="offer")[:max_shops]:
                 try:
-                    # Preis aus gh_price
                     preis_el = offer.find(class_="gh_price")
                     if not preis_el: continue
                     preis = _parse(preis_el.get_text(strip=True))
                     if not preis: continue
-
-                    # Shop-Name + URL: Link mit "redir" der NICHT "zum Angebot", "AGB", "Infos", "Bewertung" heißt
                     shop_name = ""
                     shop_url  = ""
                     skip = {"zum angebot","agb","infos","bewertung","store"}
@@ -722,6 +734,58 @@ def shops_aus_url_laden(url, max_shops=999):
                             shop_name = text
                             shop_url  = href
                             break
+                    if not shop_name or not shop_url: continue
+                    if shop_name not in anbieter:
+                        anbieter.add(shop_name)
+                        shops.append({"name": shop_name, "url": shop_url,
+                                      "preis": preis,
+                                      "shop_key": _shop_key_aus_name(shop_name),
+                                      "shop_name": shop_name})
+                except Exception as e:
+                    log(f"Offer parse error (old): {e}")
+                    continue
+            log(f"Geizhals HTML (alt): {len(shops)} Shops gefunden")
+
+        # ── Geizhals HTML-Parsing (neue Struktur: listview__item) ────────────────
+        if not shops and ist_geizhals:
+            skip = {"zum angebot","agb","infos","bewertung","store"}
+            for item in soup.find_all(
+                lambda t: t.name and any("listview__item" in c for c in t.get("class", []))
+            )[:max_shops]:
+                try:
+                    # Preis aus listview__price-link oder listview__offer
+                    preis_el = item.find(
+                        lambda t: t.name and any("listview__price" in c for c in t.get("class", []))
+                    )
+                    if not preis_el: continue
+                    preis = _parse(preis_el.get_text(strip=True))
+                    if not preis: continue
+
+                    # Shop-Name: Element mit "merchant" in der Klasse
+                    shop_name = ""
+                    shop_url  = ""
+                    merchant_el = item.find(
+                        lambda t: t.name and any("merchant" in c.lower() for c in t.get("class", []))
+                    )
+                    if merchant_el:
+                        shop_name = merchant_el.get_text(strip=True)
+                        href = merchant_el.get("href", "")
+                        if href:
+                            if not href.startswith("http"):
+                                href = "https://geizhals.de" + href
+                            shop_url = href
+
+                    # Fallback: redir-Link als Shop-URL
+                    if not shop_url:
+                        for a in item.find_all("a", href=True):
+                            href = a["href"]
+                            text = a.get_text(strip=True)
+                            if "redir" in href and text and text.lower() not in skip and len(text) > 1:
+                                if not href.startswith("http"):
+                                    href = "https://geizhals.de" + href
+                                shop_name = shop_name or text
+                                shop_url  = href
+                                break
 
                     if not shop_name or not shop_url: continue
                     if shop_name not in anbieter:
@@ -731,10 +795,9 @@ def shops_aus_url_laden(url, max_shops=999):
                                       "shop_key": _shop_key_aus_name(shop_name),
                                       "shop_name": shop_name})
                 except Exception as e:
-                    log(f"Offer parse error: {e}")
+                    log(f"Offer parse error (new): {e}")
                     continue
-
-            log(f"Geizhals HTML: {len(shops)} Shops gefunden")
+            log(f"Geizhals HTML (neu): {len(shops)} Shops gefunden")
 
         # ── Idealo HTML-Parsing ────────────────────────────────────────────────
         if not shops and ist_idealo:
@@ -1228,7 +1291,7 @@ def alle_quellen_suchen(suchbegriff, max_shops=999):
     return geizhals_suchen(suchbegriff, max_shops)
 
 
-APP_VERSION = "1.8.1"
+APP_VERSION = "1.8.2"
 GITHUB_API  = "https://api.github.com/repos/erdem-basar/price-alert-tracker/releases/latest"
 
 def check_for_update():
