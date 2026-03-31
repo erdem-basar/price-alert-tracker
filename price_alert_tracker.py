@@ -302,8 +302,19 @@ def lade_vergleiche():
     if VERGLEICH_DATEI.exists():
         with open(VERGLEICH_DATEI, "r", encoding="utf-8") as f:
             daten = json.load(f)
-        # Migration: alte Einträge mit shop="custom" reparieren
+        # Migration: Currency-Encoding-Fehler beheben (â‚¬ → €, Â£ → £)
+        CURRENCY_FIX = {"â‚¬": "€", "â¬": "€", "Â£": "£"}
         geaendert = False
+        for g in daten:
+            cur = g.get("currency", "")
+            fixed = cur
+            for bad, good in CURRENCY_FIX.items():
+                fixed = fixed.replace(bad, good)
+            if fixed != cur:
+                g["currency"] = fixed
+                geaendert = True
+
+        # Migration: alte Einträge mit shop="custom" reparieren
         for g in daten:
             for s in g.get("shops", []):
                 if s.get("shop") == "custom":
@@ -1286,7 +1297,7 @@ def alle_quellen_suchen(suchbegriff, max_shops=999):
     return geizhals_suchen(suchbegriff, max_shops)
 
 
-APP_VERSION = "1.8.3"
+APP_VERSION = "1.8.4"
 GITHUB_API  = "https://api.github.com/repos/erdem-basar/price-alert-tracker/releases/latest"
 
 def check_for_update():
