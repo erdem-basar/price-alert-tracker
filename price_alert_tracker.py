@@ -607,10 +607,11 @@ def _selenium_get(url, wait=4):
             for i in range(15):
                 geklickt = driver.execute_script("""
                     var selectors = [
+                        '.listview__bottom__more-link',
                         '.button--load-more-offers',
                         '[class*="load-more-offer"]',
                         '[class*="load-more"]',
-                        '.listview__load-more'
+                        '[class*="more-link"]'
                     ];
                     var btn = null;
                     for (var s of selectors) {
@@ -748,44 +749,38 @@ def shops_aus_url_laden(url, max_shops=999):
 
         # ── Geizhals HTML-Parsing (neue Struktur: listview__item) ────────────────
         if not shops and ist_geizhals:
-            skip = {"zum angebot","agb","infos","bewertung","store"}
             for item in soup.find_all(
                 lambda t: t.name and any("listview__item" in c for c in t.get("class", []))
             )[:max_shops]:
                 try:
-                    # Preis aus listview__price-link oder listview__offer
-                    preis_el = item.find(
-                        lambda t: t.name and any("listview__price" in c for c in t.get("class", []))
-                    )
+                    # Preis: gh_price ist weiterhin vorhanden (innerhalb eines redir-Links)
+                    preis_el = item.find(class_="gh_price")
                     if not preis_el: continue
                     preis = _parse(preis_el.get_text(strip=True))
                     if not preis: continue
 
-                    # Shop-Name: Element mit "merchant" in der Klasse
+                    # Shop-Name: data-merchant-name Attribut ist zuverlässigste Quelle
                     shop_name = ""
                     shop_url  = ""
-                    merchant_el = item.find(
-                        lambda t: t.name and any("merchant" in c.lower() for c in t.get("class", []))
-                    )
+                    merchant_el = item.find(class_="merchant")
                     if merchant_el:
-                        shop_name = merchant_el.get_text(strip=True)
+                        shop_name = merchant_el.get("data-merchant-name", "").strip()
+                        if not shop_name:
+                            shop_name = merchant_el.get_text(strip=True)
                         href = merchant_el.get("href", "")
                         if href:
                             if not href.startswith("http"):
                                 href = "https://geizhals.de" + href
                             shop_url = href
 
-                    # Fallback: redir-Link als Shop-URL
+                    # Fallback: redir-Link des Preisbuttons
                     if not shop_url:
-                        for a in item.find_all("a", href=True):
-                            href = a["href"]
-                            text = a.get_text(strip=True)
-                            if "redir" in href and text and text.lower() not in skip and len(text) > 1:
-                                if not href.startswith("http"):
-                                    href = "https://geizhals.de" + href
-                                shop_name = shop_name or text
-                                shop_url  = href
-                                break
+                        price_link = preis_el.find_parent("a", href=True)
+                        if price_link and "redir" in price_link.get("href", ""):
+                            href = price_link["href"]
+                            if not href.startswith("http"):
+                                href = "https://geizhals.de" + href
+                            shop_url = href
 
                     if not shop_name or not shop_url: continue
                     if shop_name not in anbieter:
@@ -1291,7 +1286,7 @@ def alle_quellen_suchen(suchbegriff, max_shops=999):
     return geizhals_suchen(suchbegriff, max_shops)
 
 
-APP_VERSION = "1.8.2"
+APP_VERSION = "1.8.3"
 GITHUB_API  = "https://api.github.com/repos/erdem-basar/price-alert-tracker/releases/latest"
 
 def check_for_update():

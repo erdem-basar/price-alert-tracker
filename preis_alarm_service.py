@@ -192,10 +192,11 @@ def _selenium_get(url, wait=5):
             for i in range(15):
                 geklickt = driver.execute_script("""
                     var selectors = [
+                        '.listview__bottom__more-link',
                         '.button--load-more-offers',
                         '[class*="load-more-offer"]',
                         '[class*="load-more"]',
-                        '.listview__load-more'
+                        '[class*="more-link"]'
                     ];
                     var btn = null;
                     for (var s of selectors) {
@@ -290,31 +291,26 @@ def shops_aus_url_laden(url):
 
         # Geizhals HTML-Parsing (neue Struktur: listview__item)
         if not shops:
-            skip = {"zum angebot", "agb", "infos", "bewertung", "store"}
             for item in soup.find_all(
                 lambda t: t.name and any("listview__item" in c for c in t.get("class", []))
             ):
                 try:
-                    preis_el = item.find(
-                        lambda t: t.name and any("listview__price" in c for c in t.get("class", []))
-                    )
+                    preis_el = item.find(class_="gh_price")
                     if not preis_el:
                         continue
                     preis = _parse(preis_el.get_text(strip=True))
                     if not preis:
                         continue
                     shop_name = ""
-                    merchant_el = item.find(
-                        lambda t: t.name and any("merchant" in c.lower() for c in t.get("class", []))
-                    )
+                    merchant_el = item.find(class_="merchant")
                     if merchant_el:
-                        shop_name = merchant_el.get_text(strip=True)
+                        shop_name = merchant_el.get("data-merchant-name", "").strip()
+                        if not shop_name:
+                            shop_name = merchant_el.get_text(strip=True)
                     if not shop_name:
-                        for a in item.find_all("a", href=True):
-                            text = a.get_text(strip=True)
-                            if "redir" in a["href"] and text and text.lower() not in skip and len(text) > 1:
-                                shop_name = text
-                                break
+                        price_link = preis_el.find_parent("a", href=True)
+                        if price_link:
+                            shop_name = price_link.get("data-merchant-name", "").strip()
                     if shop_name and shop_name not in anbieter:
                         anbieter.add(shop_name)
                         shops.append({"shop_name": shop_name, "preis": preis})
