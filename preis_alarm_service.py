@@ -541,6 +541,26 @@ class PreisAlarmService(win32serviceutil.ServiceFramework):
 
 
 # ── Einstiegspunkt ────────────────────────────────────────────────────────────
+def _set_recovery():
+    """Setzt Windows Service Recovery: automatischer Neustart bei Fehler."""
+    import subprocess
+    svc = PreisAlarmService._svc_name_
+    try:
+        # Startup-Typ: Automatic
+        subprocess.run(["sc", "config", svc, "start=", "auto"],
+                       capture_output=True)
+        # Recovery: 1. Fehler → Neustart nach 5s, 2. Fehler → 30s, danach immer 60s
+        # Reset-Zähler nach 24h
+        subprocess.run([
+            "sc", "failure", svc,
+            "reset=", "86400",
+            "actions=", "restart/5000/restart/30000/restart/60000"
+        ], capture_output=True)
+        print("Recovery-Einstellungen gesetzt: Neustart bei Fehler aktiviert.")
+    except Exception as e:
+        print(f"Recovery konnte nicht gesetzt werden: {e}")
+
+
 if __name__ == "__main__":
     if len(sys.argv) == 1:
         servicemanager.Initialize()
@@ -548,3 +568,5 @@ if __name__ == "__main__":
         servicemanager.StartServiceCtrlDispatcher()
     else:
         win32serviceutil.HandleCommandLine(PreisAlarmService)
+        if len(sys.argv) > 1 and sys.argv[1].lower() == "install":
+            _set_recovery()
